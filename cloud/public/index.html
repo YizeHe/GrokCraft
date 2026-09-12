@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Grokcraft — 在浏览器里使用 Grok Build</title>
+    <meta name="description" content="把本机 Grok Build 会话接到浏览器，随时继续对话。" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="topbar">
+        <a class="brand" href="/">
+          <img src="/favicon.svg" alt="" />
+          Grokcraft
+        </a>
+        <nav class="nav-links">
+          <a class="btn ghost" href="/login">登录</a>
+          <a class="btn" href="/register">创建账号</a>
+        </nav>
+      </header>
+      <section class="hero">
+        <div>
+          <h1>Grokcraft</h1>
+          <p class="lede">在浏览器里使用 Grok Build。本机 TUI 继续跑，手机或另一台电脑打开同一会话。</p>
+          <div class="hero-actions">
+            <a class="btn" href="/register">创建账号</a>
+            <a class="btn ghost" href="/login">已有账号</a>
+          </div>
+          <div class="steps">
+            <div class="step"><b>1</b><span>注册并登录 Grokcraft</span></div>
+            <div class="step"><b>2</b><span>在本机 Grok TUI 输入 <code>/grokcraft</code></span></div>
+            <div class="step"><b>3</b><span>在打开的页面授权这台电脑</span></div>
+            <div class="step"><b>4</b><span>浏览器与 TUI 同步同一条对话</span></div>
+          </div>
+        </div>
+        <div class="mock" aria-hidden="true">
+          <div class="mock-bar">
+            <span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span>
+          </div>
+          <div class="mock-body">
+            <div class="mock-row user">帮我查一下登录失败的原因</div>
+            <div class="mock-row think">思考 · 先看鉴权和会话这块…</div>
+            <div class="mock-row tool">▸ Read&nbsp;&nbsp;src/auth.ts</div>
+            <div class="mock-row">过期 cookie 被当成有效会话了。我来改掉，并补上退出登录后的跳转。</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,42 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "grokcraft",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "account_id": "e2faa83dabc3a1998c5286947eb71b0b",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "grokcraft.tanyuntech.cn", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/agent/*", "/browser/*", "/app", "/app/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "grokcraft",
+      "database_id": "d3fd89e7-57a6-4976-829f-aa71f97c901d"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MACHINE_RELAY",
+        "class_name": "MachineRelay"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MachineRelay"]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

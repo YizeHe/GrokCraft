@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="app">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Grokcraft</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' ws: wss:" />
+  </head>
+  <body class="app-body">
+    <div class="drawer-backdrop" id="drawer-backdrop"></div>
+    <div id="app">
+      <aside id="sidebar">
+        <div class="side-head">
+          <div class="side-brand">
+            <span class="name">Grokcraft</span>
+            <button class="btn ghost small" id="switch-machine" type="button">切换</button>
+          </div>
+          <div class="host" id="hostname">未连接</div>
+          <div class="cwd" id="cwd"></div>
+          <div class="status-row">
+            <span class="dot off" id="status-dot"></span>
+            <span id="status-text">离线</span>
+          </div>
+        </div>
+        <div class="session-title">
+          <div class="label">会话</div>
+          <div id="session-title">—</div>
+        </div>
+        <div class="side-section" style="flex: 1">
+          <h2>子代理</h2>
+          <div id="subagent-list"></div>
+        </div>
+        <div class="side-section">
+          <h2>任务</h2>
+          <div id="task-list"></div>
+        </div>
+        <div class="side-foot">
+          <span class="email" id="me-email"></span>
+          <button class="btn ghost small" id="logout" type="button">退出</button>
+        </div>
+      </aside>
+      <section id="main">
+        <header class="main-head">
+          <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单">☰</button>
+          <div class="crumb">
+            <button class="back" id="back-btn" type="button" hidden>返回</button>
+            <span id="view-title">Grokcraft</span>
+          </div>
+        </header>
+        <div id="transcript"></div>
+        <div id="permission" hidden></div>
+        <form id="composer">
+          <textarea id="prompt" rows="2" placeholder="发给 Grok Build…" autocomplete="off"></textarea>
+          <div class="composer-side">
+            <button class="btn" id="send" type="submit">发送</button>
+            <button class="btn ghost small" id="cancel" type="button" hidden>停止</button>
+          </div>
+        </form>
+        <div class="hint-keys">Enter 发送 · Shift+Enter 换行</div>
+      </section>
+    </div>
+    <div class="overlay" id="picker" hidden>
+      <div class="picker">
+        <h2>选择电脑</h2>
+        <p id="picker-msg">选择一台已授权的电脑开始对话。</p>
+        <div class="machine-list" id="machine-list"></div>
+      </div>
+    </div>
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>

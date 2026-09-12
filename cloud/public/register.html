@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>创建账号 · Grokcraft</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="topbar">
+        <a class="brand" href="/">
+          <img src="/favicon.svg" alt="" />
+          Grokcraft
+        </a>
+        <nav class="nav-links">
+          <a class="btn ghost" href="/login">登录</a>
+        </nav>
+      </header>
+      <div class="auth-wrap">
+        <form class="auth-card" id="form" data-mode="register">
+          <h1>创建账号</h1>
+          <p class="sub">用邮箱注册，随后即可授权本机 Grok Build。</p>
+          <div class="field">
+            <label for="email">邮箱</label>
+            <input id="email" name="email" type="email" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label for="password">密码</label>
+            <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required />
+          </div>
+          <p class="err" id="err"></p>
+          <button class="btn block" type="submit">注册</button>
+          <p class="hint">已有账号？<a href="/login">登录</a></p>
+        </form>
+      </div>
+    </div>
+    <script type="module" src="/js/auth-pages.js"></script>
+  </body>
+</html>

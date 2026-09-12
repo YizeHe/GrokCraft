@@ -1,0 +1,18 @@
+{
+  "name": "grokcraft",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Grokcraft — Cloudflare Worker relay and WebUI for Grok Build",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "db:local": "wrangler d1 execute grokcraft --local --file ./schema.sql",
+    "db:remote": "wrangler d1 execute grokcraft --remote --file ./schema.sql"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "wrangler": "^4.131.1"
+  }
+}

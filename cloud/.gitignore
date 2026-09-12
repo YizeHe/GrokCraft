@@ -1,0 +1,6 @@
+node_modules/
+.wrangler/
+.dev.vars
+.auth_secret
+worker-configuration.d.ts
+*.log

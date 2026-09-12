@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>授权这台电脑 · Grokcraft</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="topbar">
+        <a class="brand" href="/">
+          <img src="/favicon.svg" alt="" />
+          Grokcraft
+        </a>
+      </header>
+      <div class="auth-wrap">
+        <div class="auth-card">
+          <h1>授权这台电脑</h1>
+          <p class="sub">Grok Build 想把这台机器接到你的账号。</p>
+          <p class="pair-wait" id="wait">正在读取电脑信息…</p>
+          <div class="pair-meta" id="meta" hidden>
+            <div><span>主机</span><b id="hostname">—</b></div>
+            <div><span>系统</span><b id="os">—</b></div>
+            <div><span>目录</span><b id="cwd">—</b></div>
+          </div>
+          <p class="err" id="err"></p>
+          <button class="btn block" id="authorize" type="button" disabled>授权并连接</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/js/oauth-login.js"></script>
+  </body>
+</html>
