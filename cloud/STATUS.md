@@ -18,6 +18,7 @@ Deployed 2026-09-12 (Worker version `7098842a-7983-4149-9c17-f913038529ad`).
 
 - `GET /` `/login` `/register` `/oauth-login` `/css/app.css` → 200
 - `GET /app` unauthenticated → 302 `/login?next=...`
+- Logged-in `GET /app` must be 200 HTML (never 307 `/app.html` → `/app`)
 - `GET /api/me` unauthenticated → 401
 - `POST /api/register` + `/api/login` + `/api/me` + `/api/machines` → 201/200
 - Custom domain route is live (`grokcraft.tanyuntech.cn`)

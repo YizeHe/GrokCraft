@@ -279,19 +279,43 @@ async function handleBrowserWs(env: Env, request: Request, url: URL): Promise<Re
   return stub.fetch(new Request(request, { headers }));
 }
 
+/** Fetch a static file through the ASSETS binding without leaking html_handling 3xx to the browser.
+ * `/app.html` 307s to `/app`; `/app` is worker-first, so returning that 307 loops forever after login. */
 async function serveAsset(env: Env, request: Request, assetPath: string): Promise<Response> {
   const url = new URL(request.url);
   url.pathname = assetPath;
-  return env.ASSETS.fetch(new Request(url.toString(), request));
+  url.hash = "";
+  const init: RequestInit = {
+    method: "GET",
+    headers: request.headers,
+    redirect: "manual",
+  };
+  let res = await env.ASSETS.fetch(new Request(url.toString(), init));
+  if (res.status >= 300 && res.status < 400) {
+    const loc = res.headers.get("Location");
+    if (loc) {
+      const next = new URL(loc, url);
+      res = await env.ASSETS.fetch(new Request(next.toString(), init));
+    }
+  }
+  if (res.status >= 300 && res.status < 400) {
+    return new Response("static asset redirect", { status: 500 });
+  }
+  const headers = new Headers(res.headers);
+  headers.set("cache-control", "no-store");
+  return new Response(res.body, { status: res.status, headers });
 }
 
 async function handleApp(env: Env, request: Request): Promise<Response> {
   const user = await readSessionUser(env, request);
   if (!user) {
-    const next = encodeURIComponent("/app" + new URL(request.url).search);
+    const dest = "/app" + new URL(request.url).search;
+    const next = encodeURIComponent(dest);
     return Response.redirect(new URL(`/login?next=${next}`, request.url).toString(), 302);
   }
-  return serveAsset(env, request, "/app.html");
+  // Pretty URL `/app` is what the asset mapper actually serves as 200.
+  // Fetching `/app.html` 307s back here and the browser hits ERR_TOO_MANY_REDIRECTS.
+  return serveAsset(env, request, "/app");
 }
 
 async function handleApi(env: Env, request: Request, url: URL): Promise<Response> {
