@@ -6,6 +6,7 @@
     <title>Grokcraft — 在浏览器里使用 Grok Build</title>
     <meta name="description" content="把本机 Grok Build 会话接到浏览器，随时继续对话。" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/css/app.css" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'" />
   </head>
@@ -17,6 +18,8 @@
           Grokcraft
         </a>
         <nav class="nav-links">
+          <a class="btn ghost" href="#download" id="nav-download">Download</a>
+          <a class="btn ghost" href="#donate" id="nav-donate">Donate</a>
           <a class="btn ghost" href="/login">登录</a>
           <a class="btn" href="/register">创建账号</a>
         </nav>
@@ -24,7 +27,7 @@
       <section class="hero">
         <div>
           <h1>Grokcraft</h1>
-          <p class="lede">在浏览器里使用 Grok Build。本机 TUI 继续跑，手机或另一台电脑打开同一会话。</p>
+          <p class="lede">在浏览器里使用 Grok Build。必须先安装 Grok Build；Grokcraft 安装不会替换原有 Grok Build，也不会改它的设置或环境变量。</p>
           <div class="hero-actions">
             <a class="btn" href="/register">创建账号</a>
             <a class="btn ghost" href="/login">已有账号</a>
@@ -49,5 +52,6 @@
         </div>
       </section>
     </div>
+    <script type="module" src="/js/site.js"></script>
   </body>
 </html>

@@ -353,7 +353,7 @@ export class MachineRelay extends DurableObject<Env> {
       return;
     }
 
-    if (msg.type === "commands" || msg.type === "models") {
+    if (msg.type === "commands" || msg.type === "models" || msg.type === "usage" || msg.type === "reveal") {
       this.broadcastBrowsers({ ...msg, instanceId });
       return;
     }

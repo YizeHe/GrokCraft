@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Grokcraft</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0d0d0d" />
     <link rel="stylesheet" href="/css/app.css" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' ws: wss:" />
   </head>
@@ -69,6 +71,9 @@
           </form>
         </div>
       </section>
+    </div>
+    <div class="overlay" id="app-modal" hidden>
+      <div class="picker" id="app-modal-card"></div>
     </div>
     <div class="overlay" id="picker" hidden>
       <div class="picker">

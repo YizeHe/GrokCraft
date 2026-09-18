@@ -33,6 +33,8 @@ const state = {
   effort: null,
   slashIndex: 0,
   slashItems: [],
+  hiddenIds: [],
+  notifiedTurn: false,
 };
 
 function currentSessionId() {
@@ -114,11 +116,121 @@ function selectSession(instanceId, sessionId) {
   renderTranscript();
 }
 
+function hiddenKey() {
+  return `gc_hidden_${state.machineId || "na"}`;
+}
+
+function loadHidden() {
+  try {
+    return JSON.parse(localStorage.getItem(hiddenKey()) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveHidden(ids) {
+  state.hiddenIds = ids;
+  localStorage.setItem(hiddenKey(), JSON.stringify(ids));
+}
+
+function hideInstance(id) {
+  const ids = loadHidden();
+  if (!ids.includes(id)) ids.push(id);
+  saveHidden(ids);
+  if (state.instanceId === id) {
+    state.instanceId = "";
+    state.sessionId = "";
+  }
+  renderTree();
+  renderChrome();
+}
+
+function revealInstance(id) {
+  saveHidden(loadHidden().filter((x) => x !== id));
+  renderTree();
+}
+
+function openAppModal(title, bodyNode) {
+  const overlay = $("app-modal");
+  const card = $("app-modal-card");
+  if (!overlay || !card) return;
+  card.innerHTML = `<h2></h2><div class="modal-body"></div>`;
+  card.querySelector("h2").textContent = title;
+  card.querySelector(".modal-body").append(bodyNode);
+  overlay.hidden = false;
+}
+
+function closeAppModal() {
+  const overlay = $("app-modal");
+  if (overlay) overlay.hidden = true;
+}
+
+function openResumeModal() {
+  const box = document.createElement("div");
+  box.className = "machine-list";
+  const rows = [];
+  for (const inst of state.instances || []) {
+    const sessions = (inst.sessions || []).filter((s) => !s.isChild);
+    if (!sessions.length) {
+      rows.push({ inst, session: { id: inst.activeSessionId || "", title: "当前窗口" } });
+    } else {
+      for (const s of sessions) rows.push({ inst, session: s });
+    }
+  }
+  if (!rows.length) {
+    box.innerHTML = `<p class="hint">没有可恢复的对话。保持本机 TUI 运行。</p>`;
+  }
+  for (const row of rows) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "machine-row";
+    b.innerHTML = `<div><div class="h"></div><div class="m"></div></div>`;
+    b.querySelector(".h").textContent = sessionLabel(row.session);
+    b.querySelector(".m").textContent = [cwdLabel(row.inst.cwd), row.session.id.slice(0, 8)].filter(Boolean).join(" · ");
+    b.addEventListener("click", () => {
+      selectSession(row.inst.instanceId, row.session.id || row.inst.activeSessionId || "");
+      if (row.session.id) {
+        sendJson({ type: "load_session", sessionId: row.session.id, cwd: row.inst.cwd || "" });
+      }
+      closeAppModal();
+    });
+    box.append(b);
+  }
+  openAppModal("恢复会话", box);
+}
+
+function openUsageModal(text) {
+  const pre = document.createElement("pre");
+  pre.className = "install-cmd";
+  pre.textContent = text || "正在读取用量…";
+  openAppModal("用量", pre);
+}
+
+function notifyDone(body) {
+  const title = "Grokcraft";
+  const payload = { type: "notify", title, body: body || "任务已完成", tag: "grok-done" };
+  if (navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage(payload);
+  } else if (window.Notification && Notification.permission === "granted") {
+    try {
+      new Notification(title, { body: payload.body, icon: "/favicon.svg" });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function maybeAskNotify() {
+  if (!window.Notification || Notification.permission !== "default") return;
+  Notification.requestPermission().catch(() => {});
+}
+
 function renderTree() {
   const root = $("project-tree");
   if (!root) return;
   root.innerHTML = "";
-  const list = state.instances || [];
+  state.hiddenIds = loadHidden();
+  const list = (state.instances || []).filter((inst) => !state.hiddenIds.includes(inst.instanceId));
   if (!list.length) {
     const empty = document.createElement("div");
     empty.className = "tree-empty";
@@ -149,11 +261,15 @@ function renderTree() {
     box.className = "proj";
     const head = document.createElement("div");
     head.className = "proj-head";
-    head.innerHTML = `<span class="chev"></span><span class="folder-ico" aria-hidden="true"></span><span class="folder"></span><span class="meta"></span>`;
+    head.innerHTML = `<span class="chev"></span><span class="folder-ico" aria-hidden="true"></span><span class="folder"></span><span class="meta"></span><button class="more-btn" type="button" aria-label="更多">⋯</button>`;
     head.querySelector(".chev").textContent = open ? "▾" : "▸";
     head.querySelector(".folder").textContent = name;
     const n = (inst.sessions || []).filter((s) => !s.isChild).length;
     head.querySelector(".meta").textContent = n ? `${n}` : "";
+    head.querySelector(".more-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      hideInstance(inst.instanceId);
+    });
     head.addEventListener("click", () => {
       state.expanded[inst.instanceId] = !open;
       renderTree();
@@ -173,13 +289,17 @@ function renderTree() {
         const row = document.createElement("div");
         row.className = "sess-row";
         if (state.instanceId === inst.instanceId && state.sessionId === s.id) row.classList.add("active");
-        row.innerHTML = `<span class="title"></span>`;
+        row.innerHTML = `<span class="title"></span><button class="more-btn" type="button" aria-label="隐藏">⋯</button>`;
         row.querySelector(".title").textContent = sessionLabel(s);
         if (inst.turnRunning && inst.activeSessionId === s.id) {
           const busy = document.createElement("span");
           busy.className = "busy";
-          row.append(busy);
+          row.querySelector(".title").after(busy);
         }
+        row.querySelector(".more-btn").addEventListener("click", (e) => {
+          e.stopPropagation();
+          hideInstance(inst.instanceId);
+        });
         row.addEventListener("click", () => selectSession(inst.instanceId, s.id));
         box.append(row);
       }
@@ -245,8 +365,10 @@ function renderBlock(block) {
 
   if (block.kind === "user") {
     const bubble = document.createElement("div");
+    const raw = text || block.title || "";
     bubble.className = "bubble";
-    bubble.textContent = text || block.title || "";
+    if (raw.length <= 24 && !raw.includes("\n")) bubble.classList.add("short");
+    bubble.textContent = raw;
     body.append(bubble);
     el.append(body);
     return el;
@@ -537,8 +659,22 @@ function onMessage(msg) {
       setOnline(!!msg.online);
       if (msg.cwd) state.cwd = msg.cwd;
       state.model = msg.model;
+      if (msg.turnRunning && !state.turnRunning) {
+        state.notifiedTurn = false;
+        maybeAskNotify();
+      }
+      if (!msg.turnRunning && state.turnRunning && !state.notifiedTurn) {
+        state.notifiedTurn = true;
+        notifyDone("Grok 本轮已完成");
+      }
       state.turnRunning = !!msg.turnRunning;
       renderChrome();
+      break;
+    case "usage":
+      openUsageModal(msg.text || "无用量数据");
+      break;
+    case "reveal":
+      if (msg.instanceId) revealInstance(msg.instanceId);
       break;
     case "commands":
       if (!forSelectedInstance(msg) && state.instanceId) break;
@@ -559,6 +695,12 @@ function onMessage(msg) {
     case "block_upsert":
       if (!forSelectedInstance(msg)) break;
       upsertBlock(msg.block, true);
+      if (msg.block?.kind === "session_event" && /^Worked for /i.test(blockText(msg.block))) {
+        if (!state.notifiedTurn) {
+          state.notifiedTurn = true;
+          notifyDone(blockText(msg.block));
+        }
+      }
       break;
     case "block_remove":
       if (!forSelectedInstance(msg)) break;
@@ -694,6 +836,7 @@ const FALLBACK_COMMANDS = [
   { name: "compact", aliases: [], description: "压缩上下文", usage: "/compact", takesArgs: false, argsRequired: false },
   { name: "plan", aliases: [], description: "计划模式", usage: "/plan", takesArgs: false, argsRequired: false },
   { name: "help", aliases: ["h"], description: "命令帮助", usage: "/help", takesArgs: false, argsRequired: false },
+  { name: "usage", aliases: ["cost"], description: "查看用量", usage: "/usage", takesArgs: true, argsRequired: false },
   { name: "effort", aliases: [], description: "推理强度", usage: "/effort <level>", takesArgs: true, argsRequired: true },
 ];
 
@@ -797,6 +940,21 @@ function applySlashItem(kind) {
 function sendPrompt() {
   const prompt = $("prompt");
   let text = prompt.value;
+  const trimmed = text.trim();
+  const q0 = slashQuery(trimmed);
+  if (q0 && (q0.cmd === "resume" || q0.cmd === "re") && !(q0.args || "").trim()) {
+    prompt.value = "";
+    hideSlash();
+    openResumeModal();
+    return;
+  }
+  if (q0 && (q0.cmd === "usage" || q0.cmd === "cost")) {
+    prompt.value = "";
+    hideSlash();
+    sendJson({ type: "request_usage", sessionId: currentSessionId() });
+    openUsageModal("正在读取用量…");
+    return;
+  }
   const pop = $("slash-pop");
   const open = pop && !pop.hidden && state.slashItems.length;
   if (open) {
@@ -931,6 +1089,14 @@ $("logout").addEventListener("click", async () => {
 $("switch-machine").addEventListener("click", () => {
   showPicker(state.machines, "选择一台已授权的电脑。");
 });
+
+$("app-modal")?.addEventListener("click", (e) => {
+  if (e.target === $("app-modal")) closeAppModal();
+});
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
 
 async function boot() {
   try {

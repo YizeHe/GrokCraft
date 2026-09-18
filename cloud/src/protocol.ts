@@ -164,7 +164,9 @@ export type AgentToCloud =
   | { type: "permission_request"; request: PermissionRequest }
   | { type: "permission_clear"; requestId: string }
   | { type: "pong"; ts: number }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "usage"; text: string }
+  | { type: "reveal"; instanceId: string };
 
 export type CloudToAgent =
   | { type: "paired"; machineToken: string; userId: string; machineId: string }
@@ -177,7 +179,9 @@ export type CloudToAgent =
   | { type: "close_subagent" }
   | { type: "permission_response"; requestId: string; optionId: string }
   | { type: "request_block"; sessionId: string; blockId: string }
-  | { type: "ping"; ts: number };
+  | { type: "ping"; ts: number }
+  | { type: "request_usage" }
+  | { type: "load_session"; sessionId: string; cwd?: string | null };
 
 export type RelayToBrowser =
   | AgentToCloud

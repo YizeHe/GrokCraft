@@ -1,0 +1,19 @@
+{
+  "name": "Grokcraft",
+  "short_name": "Grokcraft",
+  "description": "在浏览器里使用本机 Grok Build",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0d0d0d",
+  "theme_color": "#0d0d0d",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

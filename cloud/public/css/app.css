@@ -1253,21 +1253,32 @@ html.app .block-body {
   padding: 0;
 }
 html.app .block.user {
-  display: flex;
-  justify-content: flex-end;
+  display: block;
+  width: 100%;
+  text-align: right;
+}
+html.app .block.user .block-body {
+  display: block;
+  width: 100%;
 }
 html.app .block.user .bubble {
-  width: fit-content;
+  display: inline-block;
+  text-align: left;
   max-width: min(68%, 480px);
   background: #2a2a2e;
   color: rgba(255, 255, 255, 0.92);
   border-radius: 16px;
   padding: 10px 14px;
   white-space: pre-wrap;
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
   word-break: keep-all;
   overflow-wrap: break-word;
   line-height: 1.5;
   box-shadow: none;
+}
+html.app .block.user .bubble.short {
+  white-space: nowrap;
 }
 html.app .block.assistant .md,
 html.app .block.assistant .preview {
@@ -1441,4 +1452,66 @@ html.app .hint-keys {
 }
 html.app .empty {
   color: rgba(255, 255, 255, 0.38);
+}
+html.app .proj-head,
+html.app .sess-row {
+  position: relative;
+}
+html.app .more-btn {
+  margin-left: auto;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+html.app .more-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+}
+.install-cmd {
+  background: #101010;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow-x: auto;
+  color: var(--text);
+}
+.donate-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.donate-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  background: #101010;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: inherit;
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.donate-row:hover {
+  border-color: rgba(138, 164, 255, 0.4);
+}
+.donate-row .k {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.donate-row .v {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  word-break: break-all;
 }
