@@ -94,8 +94,28 @@ export type TaskInfo = {
   activityLabel?: string | null;
 };
 
+export type InstanceInfo = {
+  instanceId: string;
+  pid: number;
+  cwd: string;
+  hostname: string;
+  label: string;
+  grokVersion: string;
+  activeSessionId: string | null;
+  turnRunning: boolean;
+  sessions: SessionSummary[];
+};
+
 export type AgentToCloud =
-  | { type: "hello"; machine: MachineInfo }
+  | { type: "hello"; machine: MachineInfo; instanceId: string; pid: number }
+  | {
+      type: "session_catalog";
+      instanceId: string;
+      cwd: string;
+      activeSessionId: string | null;
+      turnRunning: boolean;
+      sessions: SessionSummary[];
+    }
   | { type: "pairing_ready"; pairingId: string; userCode: string }
   | {
       type: "status";
@@ -141,9 +161,13 @@ export type RelayToBrowser =
   | AgentToCloud
   | { type: "machine_offline" }
   | { type: "machine_online" }
+  | { type: "instance_offline"; instanceId: string }
+  | { type: "catalog"; instances: InstanceInfo[]; machineOnline: boolean }
   | { type: "paired_ok" };
 
-export type BrowserToRelay = Exclude<CloudToAgent, { type: "paired" }>;
+export type BrowserToRelay =
+  | Exclude<CloudToAgent, { type: "paired" }>
+  | { type: "watch"; instanceId: string; sessionId: string };
 
 export type WsAttachment = {
   role: "agent" | "browser";
@@ -151,6 +175,9 @@ export type WsAttachment = {
   pairingId?: string;
   userCode?: string;
   auth: "pairing" | "token" | "session";
+  instanceId?: string;
+  watchInstanceId?: string;
+  watchSessionId?: string;
 };
 
 export const USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

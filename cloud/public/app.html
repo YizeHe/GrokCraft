@@ -14,25 +14,27 @@
       <aside id="sidebar">
         <div class="side-head">
           <div class="side-brand">
-            <span class="name">Grokcraft</span>
-            <button class="btn ghost small" id="switch-machine" type="button">切换</button>
+            <div class="brand-mark">
+              <span class="mark" aria-hidden="true"></span>
+              <span class="name">Grokcraft</span>
+            </div>
+            <button class="btn ghost small" id="switch-machine" type="button">电脑</button>
           </div>
           <div class="host" id="hostname">未连接</div>
-          <div class="cwd" id="cwd"></div>
           <div class="status-row">
             <span class="dot off" id="status-dot"></span>
             <span id="status-text">离线</span>
           </div>
         </div>
-        <div class="session-title">
-          <div class="label">会话</div>
-          <div id="session-title">—</div>
+        <div class="side-section tree-section">
+          <h2>项目</h2>
+          <div id="project-tree"></div>
         </div>
-        <div class="side-section" style="flex: 1">
+        <div class="side-section" id="subagent-section">
           <h2>子代理</h2>
           <div id="subagent-list"></div>
         </div>
-        <div class="side-section">
+        <div class="side-section" id="task-section">
           <h2>任务</h2>
           <div id="task-list"></div>
         </div>
@@ -46,7 +48,7 @@
           <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单">☰</button>
           <div class="crumb">
             <button class="back" id="back-btn" type="button" hidden>返回</button>
-            <span id="view-title">Grokcraft</span>
+            <span id="view-title">选择一个对话</span>
           </div>
         </header>
         <div id="transcript"></div>
@@ -64,7 +66,7 @@
     <div class="overlay" id="picker" hidden>
       <div class="picker">
         <h2>选择电脑</h2>
-        <p id="picker-msg">选择一台已授权的电脑开始对话。</p>
+        <p id="picker-msg">选择一台已授权的电脑。</p>
         <div class="machine-list" id="machine-list"></div>
       </div>
     </div>

@@ -8,3 +8,4 @@
 - Rust toolchain lives at `D:\rustup` + `D:\cargo` (`RUSTUP_HOME` / `CARGO_HOME`).
 - Windows grok-build builds need `PROTOC=D:\grokbuild\grokcraft\grok-build\target\protoc-win\bin\protoc.exe` (extracted by the first cargo run). `xai-proto-build` skips `/dev/stdout` depfiles on Windows.
 - Debug TUI binary: `grok-build\target\debug\xai-grok-pager.exe`. `/grokcraft` pairs with https://grokcraft.tanyuntech.cn.
+- One machine token, many TUI **instanceId** sockets. DO must not close sibling agents. Catalog is cheap; snapshots only for the watched instance. Clients send the text `"ping"` ~50s; DO `setWebSocketAutoResponse("ping","pong")` answers at the edge (no isolate wake, no D1). D1 `last_seen` ≤ 5 min. On agent close, drop that instance from the catalog only if no replacement socket for the same `instanceId` is already open.

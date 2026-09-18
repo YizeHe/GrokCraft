@@ -19,9 +19,18 @@ Override: env `GROKCRAFT_URL` (no trailing slash).
 6. The agent stores `$GROK_HOME/grokcraft.json` (never `auth.json`).
 7. Later TUI launches auto-reconnect with `machineToken`. `/grokcraft` again
    shows status and re-opens the Web UI.
-8. At `/app` the user picks a machine and chats. TUI and WebUI stay in sync.
+8. At `/app` the user picks a computer, then a project/conversation in the sidebar.
 
-The computer must stay on **and** the grok TUI process must keep running.
+Pairing is once per computer (`grokcraft.json`). Each Grok TUI window is an
+**instance** with its own WebSocket; they do not replace each other. New
+sessions in any window show up as rows under that project.
+
+The computer must stay on **and** at least one paired Grok TUI must be running.
+
+Keep-alive uses Durable Object WebSocket hibernation ping/pong (does not wake
+the isolate). D1 `last_seen` is written at most every 5 minutes. The browser
+does not send application pings. Transcript snapshots are sent only for the
+session the web UI is watching.
 
 ## HTTP routes (Worker)
 
@@ -60,7 +69,8 @@ URL: `wss://grokcraft.tanyuntech.cn/agent/ws`
 Query:
 
 - First pairing: `?role=agent&pairingId=<uuid>&userCode=<8chars>`
-- Reconnect: `?role=agent&machineToken=<token>`
+- Reconnect: `?role=agent&machineToken=<token>&instanceId=<uuid>`
+  `instanceId` is unique per TUI process so two windows share a machine without stealing the socket.
 
 All frames are JSON text. Max ~900KB; truncate tool bodies, send full on
 `request_block`.
@@ -69,7 +79,10 @@ All frames are JSON text. Max ~900KB; truncate tool bodies, send full on
 
 ```jsonc
 // First frame after connect
-{ "type": "hello", "machine": {
+{ "type": "hello",
+  "instanceId": "uuid",      // unique per TUI process
+  "pid": 1234,
+  "machine": {
     "id": "uuid",            // stable, from grokcraft.json
     "hostname": "string",
     "os": "windows|macos|linux",
@@ -77,6 +90,14 @@ All frames are JSON text. Max ~900KB; truncate tool bodies, send full on
     "grokVersion": "string",
     "label": "string"        // hostname by default
 }}
+
+// Cheap session list (always, throttled by fingerprint). Not a transcript snapshot.
+{ "type": "session_catalog",
+  "instanceId": "uuid",
+  "cwd": "string",
+  "activeSessionId": "string|null",
+  "turnRunning": false,
+  "sessions": [ /* SessionSummary */ ] }
 
 { "type": "pairing_ready", "pairingId": "uuid", "userCode": "ABCD2345" }
 
@@ -143,6 +164,7 @@ Browser → relay: same as `CloudToAgent` except `paired` is never sent by the
 browser. Plus:
 
 ```jsonc
+{ "type": "watch", "instanceId": "uuid", "sessionId": "string" }
 { "type": "prompt", "sessionId": null, "text": "string", "promptId": "uuid" }
 ```
 
@@ -151,15 +173,22 @@ Relay → browser: same as `AgentToCloud` plus:
 ```jsonc
 { "type": "machine_offline" }
 { "type": "machine_online" }
+{ "type": "instance_offline", "instanceId": "uuid" }
+{ "type": "catalog", "instances": [ /* InstanceInfo */ ], "machineOnline": true }
 { "type": "paired_ok" }   // only on oauth-login wait socket if used
 ```
 
-The Durable Object tagged `agent` vs `browser` forwards:
+The Durable Object tags every agent as `agent` **and** `agent:<instanceId>`.
+Several TUI processes share one machine token:
 
-- agent frames → all browser sockets
-- browser frames → the single agent socket
-- `subscribe` is injected by the DO when the first browser connects
-- ping/pong via `setWebSocketAutoResponse("ping","pong")`
+- sibling agents are never closed as "replaced" (only the same `instanceId` reconnecting is)
+- `session_catalog` / `hello` → all browsers as a `catalog` (project tree)
+- transcript live frames (`snapshot`, `block_*`, …) → browsers **only if** that instance is `watch`ed
+- browser frames → the watched instance's agent socket
+- `subscribe` / `unsubscribe` are injected when the set of watched instances changes
+- keepalive: clients send the text `"ping"` about every 50s;
+  `setWebSocketAutoResponse("ping","pong")` answers at the edge and does **not**
+  wake the isolate or touch D1. D1 `last_seen` at most every 5 minutes.
 
 ## TranscriptBlock (TUI parity)
 
@@ -304,10 +333,13 @@ Owner-only permissions on Unix. Atomic write.
 
 Class `MachineRelay`, SQLite, one instance per `machineId` (`getByName`).
 
-Hibernation WebSockets: `ctx.acceptWebSocket(server)` with attachment
-`{ role: "agent"|"browser" }`.
+Hibernation WebSockets: `ctx.acceptWebSocket(server)` with tags `agent` /
+`agent:<instanceId>` or `browser`, and an attachment that includes `instanceId`
+and (for browsers) `watchInstanceId`.
 
 Constructor: `setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping","pong"))`.
+Agent and browser clients send the text `"ping"` about every 50 seconds. That
+pair is answered at the edge and does not invoke `webSocketMessage`.
 
 ## WebUI rendering
 

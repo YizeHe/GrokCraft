@@ -1,6 +1,6 @@
 # Grokcraft cloud status
 
-Deployed 2026-09-12 (Worker version `7098842a-7983-4149-9c17-f913038529ad`).
+Deployed 2026-09-18 (Worker version `e4610882-4c87-41ef-9938-b2bc9ab1869f`). Multi-instance catalog + grok-app-like project tree. Previous: `7098842a-7983-4149-9c17-f913038529ad`.
 
 ## URLs
 

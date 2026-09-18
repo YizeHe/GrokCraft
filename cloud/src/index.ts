@@ -234,6 +234,8 @@ async function handleAgentWs(env: Env, request: Request, url: URL): Promise<Resp
     headers.set("X-Grokcraft-Role", "agent");
     headers.set("X-Grokcraft-Auth", "token");
     headers.set("X-Grokcraft-User-Id", machine.user_id);
+    const instanceId = url.searchParams.get("instanceId") || "";
+    if (instanceId) headers.set("X-Grokcraft-Instance-Id", instanceId);
     return stub.fetch(new Request(request, { headers }));
   }
 
@@ -256,6 +258,8 @@ async function handleAgentWs(env: Env, request: Request, url: URL): Promise<Resp
   headers.set("X-Grokcraft-Auth", "pairing");
   headers.set("X-Grokcraft-Pairing-Id", pairingId);
   headers.set("X-Grokcraft-User-Code", userCode);
+  const instanceId = url.searchParams.get("instanceId") || "";
+  if (instanceId) headers.set("X-Grokcraft-Instance-Id", instanceId);
   return stub.fetch(new Request(request, { headers }));
 }
 

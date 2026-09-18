@@ -12,8 +12,11 @@ const state = {
   cwd: "",
   model: null,
   sessionId: null,
+  instanceId: "",
   turnRunning: false,
   sessions: [],
+  instances: [],
+  expanded: {},
   blocks: new Map(),
   blockOrder: [],
   subagents: new Map(),
@@ -22,11 +25,31 @@ const state = {
   viewChildId: null,
   stickBottom: true,
   ws: null,
+  reconnectTimer: null,
+  reconnectAttempt: 0,
   pingTimer: null,
 };
 
 function currentSessionId() {
   return state.viewChildId || state.sessionId;
+}
+
+function forSelectedInstance(msg) {
+  if (!msg.instanceId) return true;
+  if (!state.instanceId) return false;
+  return msg.instanceId === state.instanceId;
+}
+
+function cwdLabel(cwd) {
+  if (!cwd) return "本机会话";
+  const parts = String(cwd).replace(/\\/g, "/").split("/").filter(Boolean);
+  return parts[parts.length - 1] || cwd;
+}
+
+function sessionLabel(s) {
+  if (s?.title && s.title !== s.id) return s.title;
+  if (s?.id) return s.id.slice(0, 8);
+  return "对话";
 }
 
 function sessionTitle() {
@@ -51,7 +74,111 @@ function setOnline(on) {
 
 function sendJson(msg) {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+  if (state.instanceId && msg.instanceId == null) msg.instanceId = state.instanceId;
   state.ws.send(JSON.stringify(msg));
+}
+
+function watchSelection() {
+  if (!state.instanceId) return;
+  sendJson({ type: "watch", instanceId: state.instanceId, sessionId: state.sessionId || "" });
+}
+
+function selectSession(instanceId, sessionId) {
+  const changed = state.instanceId !== instanceId || state.sessionId !== sessionId;
+  state.instanceId = instanceId;
+  state.sessionId = sessionId;
+  state.viewChildId = null;
+  if (changed) {
+    state.blocks.clear();
+    state.blockOrder = [];
+    state.subagents.clear();
+    state.tasks.clear();
+    state.permission = null;
+  }
+  const inst = state.instances.find((i) => i.instanceId === instanceId);
+  if (inst) {
+    state.hostname = inst.hostname || state.hostname;
+    state.cwd = inst.cwd || "";
+    state.turnRunning = !!inst.turnRunning;
+  }
+  watchSelection();
+  renderTree();
+  renderChrome();
+  renderTranscript();
+}
+
+function renderTree() {
+  const root = $("project-tree");
+  if (!root) return;
+  root.innerHTML = "";
+  const list = state.instances || [];
+  if (!list.length) {
+    const empty = document.createElement("div");
+    empty.className = "tree-empty";
+    empty.textContent = state.online
+      ? "还没有对话。在本机 Grok TUI 开一个会话即可出现在这里。"
+      : "电脑离线。保持 Grok TUI 运行，配对过一次后会自动连上。";
+    root.append(empty);
+    return;
+  }
+  const usedNames = {};
+  for (const inst of list) {
+    const base = cwdLabel(inst.cwd) || inst.label || inst.hostname || "窗口";
+    usedNames[base] = (usedNames[base] || 0) + 1;
+    inst._displayName = usedNames[base] > 1 ? `${base} · ${usedNames[base]}` : base;
+  }
+  const counts = {};
+  for (const inst of list) {
+    const base = cwdLabel(inst.cwd) || inst.label || inst.hostname || "窗口";
+    counts[base] = (counts[base] || 0) + 1;
+  }
+  const seen = {};
+  for (const inst of list) {
+    const base = cwdLabel(inst.cwd) || inst.label || inst.hostname || "窗口";
+    seen[base] = (seen[base] || 0) + 1;
+    const name = counts[base] > 1 ? `${base} · ${seen[base]}` : base;
+    const open = state.expanded[inst.instanceId] !== false;
+    const box = document.createElement("div");
+    box.className = "proj";
+    const head = document.createElement("div");
+    head.className = "proj-head";
+    head.innerHTML = `<span class="chev"></span><span class="folder-ico" aria-hidden="true"></span><span class="folder"></span><span class="meta"></span>`;
+    head.querySelector(".chev").textContent = open ? "▾" : "▸";
+    head.querySelector(".folder").textContent = name;
+    const n = (inst.sessions || []).filter((s) => !s.isChild).length;
+    head.querySelector(".meta").textContent = n ? `${n}` : "";
+    head.addEventListener("click", () => {
+      state.expanded[inst.instanceId] = !open;
+      renderTree();
+    });
+    box.append(head);
+    if (open) {
+      const sessions = (inst.sessions || []).filter((s) => !s.isChild);
+      if (!sessions.length) {
+        const row = document.createElement("div");
+        row.className = "sess-row";
+        row.innerHTML = `<span class="title">当前窗口</span>`;
+        if (state.instanceId === inst.instanceId) row.classList.add("active");
+        row.addEventListener("click", () => selectSession(inst.instanceId, inst.activeSessionId || ""));
+        box.append(row);
+      }
+      for (const s of sessions) {
+        const row = document.createElement("div");
+        row.className = "sess-row";
+        if (state.instanceId === inst.instanceId && state.sessionId === s.id) row.classList.add("active");
+        row.innerHTML = `<span class="title"></span>`;
+        row.querySelector(".title").textContent = sessionLabel(s);
+        if (inst.turnRunning && inst.activeSessionId === s.id) {
+          const busy = document.createElement("span");
+          busy.className = "busy";
+          row.append(busy);
+        }
+        row.addEventListener("click", () => selectSession(inst.instanceId, s.id));
+        box.append(row);
+      }
+    }
+    root.append(box);
+  }
 }
 
 function nextDisplayMode(block) {
@@ -186,9 +313,11 @@ function renderTranscript() {
   if (!blocks.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.innerHTML = state.online
-      ? "<strong>这台电脑已连接</strong><br />输入消息发给 Grok Build。"
-      : "<strong>电脑未在线</strong><br />请保持本机 Grok TUI 运行。";
+    empty.innerHTML = !state.online
+      ? "<strong>电脑离线</strong><br />请保持本机 Grok TUI 运行。"
+      : !state.sessionId
+        ? "<strong>选择一个对话</strong><br />左侧项目列表里点开即可。"
+        : "<strong>开始对话</strong><br />输入消息发给 Grok Build。";
     root.append(empty);
     return;
   }
@@ -219,10 +348,11 @@ function upsertBlock(block, inPlace = false) {
 
 function renderSubagents() {
   const root = $("subagent-list");
+  const section = $("subagent-section");
   root.innerHTML = "";
   const list = [...state.subagents.values()];
+  if (section) section.hidden = !list.length;
   if (!list.length) {
-    root.innerHTML = `<div class="side-item"><div class="t"><div class="m">暂无</div></div></div>`;
     return;
   }
   for (const s of list) {
@@ -245,10 +375,11 @@ function renderSubagents() {
 
 function renderTasks() {
   const root = $("task-list");
+  const section = $("task-section");
   root.innerHTML = "";
   const list = [...state.tasks.values()];
+  if (section) section.hidden = !list.length;
   if (!list.length) {
-    root.innerHTML = `<div class="side-item"><div class="t"><div class="m">暂无</div></div></div>`;
     return;
   }
   for (const t of list) {
@@ -291,19 +422,20 @@ function renderPermission() {
 
 function renderChrome() {
   $("hostname").textContent = state.hostname || "未连接";
-  $("cwd").textContent = state.cwd || "";
-  $("session-title").textContent = sessionTitle();
-  $("view-title").textContent = state.viewChildId ? sessionTitle() : "Grokcraft";
+  $("view-title").textContent = state.viewChildId ? sessionTitle() : sessionTitle();
   $("back-btn").hidden = !state.viewChildId;
   $("cancel").hidden = !state.turnRunning;
+  $("send").disabled = !state.online || !state.sessionId;
+  $("prompt").disabled = !state.online || !state.sessionId;
+  renderTree();
   renderSubagents();
   renderTasks();
   renderPermission();
 }
 
 function applySnapshot(msg) {
-  state.sessions = msg.sessions || [];
-  state.sessionId = msg.activeSessionId;
+  if (msg.sessions) state.sessions = msg.sessions;
+  if (msg.activeSessionId && !state.sessionId) state.sessionId = msg.activeSessionId;
   state.blocks.clear();
   state.blockOrder = [];
   for (const b of msg.blocks || []) {
@@ -315,57 +447,90 @@ function applySnapshot(msg) {
   state.tasks.clear();
   for (const t of msg.tasks || []) state.tasks.set(t.id, t);
   state.permission = msg.permission || null;
-  if (state.viewChildId && state.sessionId && state.sessionId !== state.viewChildId) {
-    /* agent switched us */
-  }
   renderChrome();
   renderTranscript();
 }
 
+function firstSessionId(inst) {
+  const first = (inst?.sessions || []).find((s) => !s.isChild);
+  return first?.id || inst?.activeSessionId || "";
+}
+
+function applyCatalog(msg) {
+  state.instances = msg.instances || [];
+  const any = !!msg.machineOnline && state.instances.length > 0;
+  setOnline(any);
+  if (state.instanceId && !state.instances.some((i) => i.instanceId === state.instanceId)) {
+    state.instanceId = "";
+    state.sessionId = "";
+    state.blocks.clear();
+    state.blockOrder = [];
+  }
+  if (!state.instanceId && state.instances.length === 1) {
+    const inst = state.instances[0];
+    selectSession(inst.instanceId, firstSessionId(inst));
+    return;
+  }
+  if (state.instanceId && !state.sessionId) {
+    const inst = state.instances.find((i) => i.instanceId === state.instanceId);
+    const sid = firstSessionId(inst);
+    if (sid) {
+      selectSession(state.instanceId, sid);
+      return;
+    }
+  }
+  renderChrome();
+}
+
 function onMessage(msg) {
   switch (msg.type) {
+    case "catalog":
+      applyCatalog(msg);
+      break;
     case "hello":
-      if (msg.machine) {
-        state.hostname = msg.machine.hostname || state.hostname;
-        state.cwd = msg.machine.cwd || state.cwd;
-        renderChrome();
-      }
       setOnline(true);
       break;
     case "status":
+      if (!forSelectedInstance(msg)) break;
       setOnline(!!msg.online);
       if (msg.cwd) state.cwd = msg.cwd;
       state.model = msg.model;
-      if (msg.sessionId) state.sessionId = msg.sessionId;
       state.turnRunning = !!msg.turnRunning;
       renderChrome();
       break;
     case "snapshot":
+      if (!forSelectedInstance(msg)) break;
       setOnline(true);
       applySnapshot(msg);
       break;
     case "block_upsert":
+      if (!forSelectedInstance(msg)) break;
       upsertBlock(msg.block, true);
       break;
     case "block_remove":
+      if (!forSelectedInstance(msg)) break;
       state.blocks.delete(msg.id);
       state.blockOrder = state.blockOrder.filter((id) => id !== msg.id);
       document.getElementById(`block-${msg.id}`)?.remove();
       if (!visibleBlocks().length) renderTranscript();
       break;
     case "subagent_upsert":
+      if (!forSelectedInstance(msg)) break;
       state.subagents.set(msg.subagent.childSessionId, msg.subagent);
       renderSubagents();
       break;
     case "task_upsert":
+      if (!forSelectedInstance(msg)) break;
       state.tasks.set(msg.task.id, msg.task);
       renderTasks();
       break;
     case "permission_request":
+      if (!forSelectedInstance(msg)) break;
       state.permission = msg.request;
       renderPermission();
       break;
     case "permission_clear":
+      if (!forSelectedInstance(msg)) break;
       if (!state.permission || state.permission.requestId === msg.requestId) {
         state.permission = null;
         renderPermission();
@@ -373,11 +538,20 @@ function onMessage(msg) {
       break;
     case "machine_offline":
       setOnline(false);
+      renderTree();
       renderTranscript();
       break;
     case "machine_online":
       setOnline(true);
-      renderTranscript();
+      renderTree();
+      break;
+    case "instance_offline":
+      if (msg.instanceId === state.instanceId) {
+        state.instanceId = "";
+        state.sessionId = "";
+        renderChrome();
+        renderTranscript();
+      }
       break;
     case "error":
       console.warn(msg.message);
@@ -404,6 +578,14 @@ function closeChildSession() {
 function connectWs() {
   const prev = state.ws;
   state.ws = null;
+  if (state.reconnectTimer) {
+    clearTimeout(state.reconnectTimer);
+    state.reconnectTimer = null;
+  }
+  if (state.pingTimer) {
+    clearInterval(state.pingTimer);
+    state.pingTimer = null;
+  }
   if (prev) {
     try {
       prev.close();
@@ -415,10 +597,13 @@ function connectWs() {
   const ws = new WebSocket(`${proto}//${location.host}/browser/ws?machineId=${encodeURIComponent(state.machineId)}`);
   state.ws = ws;
   ws.addEventListener("open", () => {
+    state.reconnectAttempt = 0;
     if (state.pingTimer) clearInterval(state.pingTimer);
+    // Hibernation auto-response: does not wake the isolate / D1.
     state.pingTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.send("ping");
-    }, 25000);
+    }, 50000);
+    if (state.instanceId) watchSelection();
   });
   ws.addEventListener("message", (ev) => {
     if (ev.data === "pong" || ev.data === "ping") return;
@@ -429,12 +614,18 @@ function connectWs() {
     }
   });
   ws.addEventListener("close", () => {
+    if (state.pingTimer) {
+      clearInterval(state.pingTimer);
+      state.pingTimer = null;
+    }
     if (state.ws !== ws) return;
     setOnline(false);
     $("status-text").textContent = "重连中";
-    setTimeout(() => {
-      if (state.ws === ws && state.machineId) connectWs();
-    }, 1500);
+    const delay = Math.min(15000, 2000 * Math.pow(2, state.reconnectAttempt));
+    state.reconnectAttempt += 1;
+    state.reconnectTimer = setTimeout(() => {
+      if (state.machineId) connectWs();
+    }, delay);
   });
 }
 
@@ -445,9 +636,10 @@ function autoGrow(el) {
 
 function sendPrompt() {
   const text = $("prompt").value;
-  if (!text.trim() || !state.online) return;
+  if (!text.trim() || !state.online || !state.sessionId) return;
   sendJson({
     type: "prompt",
+    instanceId: state.instanceId,
     sessionId: currentSessionId(),
     text,
     promptId: crypto.randomUUID(),
