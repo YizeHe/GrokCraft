@@ -4,3 +4,4 @@ node_modules/
 .auth_secret
 worker-configuration.d.ts
 *.log
+tmp-screens/

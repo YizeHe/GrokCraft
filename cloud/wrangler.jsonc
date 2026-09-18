@@ -37,6 +37,9 @@
       "new_sqlite_classes": ["MachineRelay"]
     }
   ],
+  "vars": {
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAE7-fWDTJ6p5jxGu"
+  },
   "observability": {
     "enabled": true
   }

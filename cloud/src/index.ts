@@ -22,6 +22,7 @@ import {
   type PairingRow,
 } from "./db";
 import { isUserCode, normalizeUserCode } from "./protocol";
+import { clientIp, turnstileTokenFromBody, verifyTurnstile } from "./turnstile";
 
 export { MachineRelay };
 
@@ -99,6 +100,8 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
   const body = await readBody(request);
   const email = normalizeEmail(String(body.email ?? ""));
   const password = String(body.password ?? "");
+  const captchaErr = await verifyTurnstile(env, turnstileTokenFromBody(body), clientIp(request));
+  if (captchaErr) return errorJson(400, captchaErr);
   const emailErr = validateEmail(email);
   if (emailErr) return errorJson(400, emailErr);
   const pwErr = validatePassword(password);
@@ -127,6 +130,8 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   const body = await readBody(request);
   const email = normalizeEmail(String(body.email ?? ""));
   const password = String(body.password ?? "");
+  const captchaErr = await verifyTurnstile(env, turnstileTokenFromBody(body), clientIp(request));
+  if (captchaErr) return errorJson(400, captchaErr);
   if (!email || !password) return errorJson(400, "请输入邮箱和密码");
 
   const user = await getUserByEmail(env.DB, email);

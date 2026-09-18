@@ -1,6 +1,6 @@
 # Grokcraft cloud status
 
-Deployed 2026-09-18 (Worker version `e4610882-4c87-41ef-9938-b2bc9ab1869f`). Multi-instance catalog + grok-app-like project tree. Previous: `7098842a-7983-4149-9c17-f913038529ad`.
+Deployed 2026-09-18 (Worker version `29d0922c-ed4f-4f17-8cab-03846181f33c`). Login/register Turnstile + visible auth buttons + terms. Previous: `e4610882-4c87-41ef-9938-b2bc9ab1869f`.
 
 ## URLs
 

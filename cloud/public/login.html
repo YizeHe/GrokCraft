@@ -6,7 +6,11 @@
     <title>登录 · Grokcraft</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/css/app.css" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; child-src https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com; worker-src https://challenges.cloudflare.com"
+    />
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   </head>
   <body>
     <div class="page">
@@ -32,7 +36,17 @@
             <input id="password" name="password" type="password" autocomplete="current-password" required />
           </div>
           <p class="err" id="err"></p>
+          <div class="turnstile-slot">
+            <div
+              class="cf-turnstile"
+              data-sitekey="0x4AAAAAAE7-fWDTJ6p5jxGu"
+              data-theme="dark"
+              data-size="flexible"
+              data-action="turnstile-spin-v1"
+            ></div>
+          </div>
           <button class="btn block" type="submit">登录</button>
+          <p class="legal">注册或登录即表明您已同意<a href="/terms" target="_blank" rel="noopener">《用户协议》</a></p>
           <p class="hint">没有账号？<a href="/register">创建账号</a></p>
         </form>
       </div>
