@@ -1257,13 +1257,16 @@ html.app .block.user {
   justify-content: flex-end;
 }
 html.app .block.user .bubble {
-  max-width: min(72%, 560px);
+  width: fit-content;
+  max-width: min(68%, 480px);
   background: #2a2a2e;
   color: rgba(255, 255, 255, 0.92);
   border-radius: 16px;
   padding: 10px 14px;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  line-height: 1.5;
   box-shadow: none;
 }
 html.app .block.assistant .md,
@@ -1326,7 +1329,8 @@ html.app #composer {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-width: 760px;
+  width: min(560px, 100%);
+  max-width: 560px;
   margin: 0 auto;
   padding: 10px 12px 10px;
   background: #1a1a1a;
@@ -1396,7 +1400,7 @@ html.app .slash-pop {
   left: 50%;
   bottom: calc(100% - 8px);
   transform: translateX(-50%);
-  width: min(760px, calc(100% - 32px));
+  width: min(560px, calc(100% - 32px));
   max-height: 280px;
   overflow: auto;
   background: rgba(28, 28, 30, 0.96);

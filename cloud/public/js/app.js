@@ -263,7 +263,11 @@ function renderBlock(block) {
     name.textContent = kindLabel(block);
     const title = document.createElement("span");
     title.className = "block-title";
-    title.textContent = block.title && block.title !== kindLabel(block) ? block.title : block.activityLabel || "";
+    const extra = block.title && block.title !== kindLabel(block) && block.title.toLowerCase() !== kindLabel(block).toLowerCase()
+      && !["thinking", "user", "assistant", "system"].includes(block.title.toLowerCase())
+      ? block.title
+      : block.activityLabel || "";
+    title.textContent = extra;
     const meta = document.createElement("span");
     meta.className = "block-meta";
     meta.textContent = block.status === "running" ? block.activityLabel || "进行中" : block.status === "error" ? "错误" : "";
