@@ -73,6 +73,20 @@ export type SessionSummary = {
   parentId: string | null;
 };
 
+export type SlashCommandInfo = {
+  name: string;
+  aliases: string[];
+  description: string;
+  usage: string;
+  takesArgs: boolean;
+  argsRequired: boolean;
+};
+
+export type ModelOption = {
+  id: string;
+  name: string;
+};
+
 export type PermissionOption = { id: string; label: string };
 
 export type PermissionRequest = {
@@ -115,6 +129,14 @@ export type AgentToCloud =
       activeSessionId: string | null;
       turnRunning: boolean;
       sessions: SessionSummary[];
+    }
+  | { type: "commands"; instanceId: string; commands: SlashCommandInfo[] }
+  | {
+      type: "models";
+      instanceId: string;
+      models: ModelOption[];
+      current: string | null;
+      reasoningEffort: string | null;
     }
   | { type: "pairing_ready"; pairingId: string; userCode: string }
   | {

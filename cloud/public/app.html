@@ -18,29 +18,25 @@
               <span class="mark" aria-hidden="true"></span>
               <span class="name">Grokcraft</span>
             </div>
-            <button class="btn ghost small" id="switch-machine" type="button">电脑</button>
+            <button class="icon-btn" id="switch-machine" type="button" title="切换电脑">电脑</button>
           </div>
           <div class="host" id="hostname">未连接</div>
-          <div class="status-row">
-            <span class="dot off" id="status-dot"></span>
-            <span id="status-text">离线</span>
-          </div>
         </div>
         <div class="side-section tree-section">
           <h2>项目</h2>
           <div id="project-tree"></div>
         </div>
-        <div class="side-section" id="subagent-section">
+        <div class="side-section" id="subagent-section" hidden>
           <h2>子代理</h2>
           <div id="subagent-list"></div>
         </div>
-        <div class="side-section" id="task-section">
+        <div class="side-section" id="task-section" hidden>
           <h2>任务</h2>
           <div id="task-list"></div>
         </div>
         <div class="side-foot">
           <span class="email" id="me-email"></span>
-          <button class="btn ghost small" id="logout" type="button">退出</button>
+          <button class="icon-btn" id="logout" type="button">退出</button>
         </div>
       </aside>
       <section id="main">
@@ -48,19 +44,30 @@
           <button class="menu-btn" id="menu-btn" type="button" aria-label="菜单">☰</button>
           <div class="crumb">
             <button class="back" id="back-btn" type="button" hidden>返回</button>
-            <span id="view-title">选择一个对话</span>
+            <div class="title-stack">
+              <span id="view-title">选择一个对话</span>
+              <span class="sub" id="view-sub"></span>
+            </div>
+          </div>
+          <div class="head-status">
+            <span class="dot off" id="status-dot"></span>
+            <span id="status-text">离线</span>
           </div>
         </header>
         <div id="transcript"></div>
         <div id="permission" hidden></div>
-        <form id="composer">
-          <textarea id="prompt" rows="2" placeholder="发给 Grok Build…" autocomplete="off"></textarea>
-          <div class="composer-side">
-            <button class="btn" id="send" type="submit">发送</button>
-            <button class="btn ghost small" id="cancel" type="button" hidden>停止</button>
-          </div>
-        </form>
-        <div class="hint-keys">Enter 发送 · Shift+Enter 换行</div>
+        <div class="composer-dock">
+          <div id="slash-pop" class="slash-pop" hidden></div>
+          <form id="composer">
+            <textarea id="prompt" rows="1" placeholder="发给 Grok…" autocomplete="off"></textarea>
+            <div class="composer-bar">
+              <button type="button" class="chip" id="model-chip">模型</button>
+              <span class="grow"></span>
+              <button class="chip ghost" id="cancel" type="button" hidden>停止</button>
+              <button class="send-fab" id="send" type="submit" aria-label="发送">↑</button>
+            </div>
+          </form>
+        </div>
       </section>
     </div>
     <div class="overlay" id="picker" hidden>

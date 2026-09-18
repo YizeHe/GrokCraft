@@ -28,6 +28,11 @@ const state = {
   reconnectTimer: null,
   reconnectAttempt: 0,
   pingTimer: null,
+  commands: [],
+  models: [],
+  effort: null,
+  slashIndex: 0,
+  slashItems: [],
 };
 
 function currentSessionId() {
@@ -68,8 +73,10 @@ function setOnline(on) {
   state.online = on;
   $("status-dot").className = "dot " + (on ? "live" : "off");
   $("status-text").textContent = on ? "在线" : "离线";
-  $("send").disabled = !on;
-  $("prompt").disabled = !on;
+  const send = $("send");
+  const prompt = $("prompt");
+  if (send) send.disabled = !on;
+  if (prompt) prompt.disabled = !on;
 }
 
 function sendJson(msg) {
@@ -200,6 +207,14 @@ function kindLabel(block) {
   return block.title || block.kind;
 }
 
+function blockText(block) {
+  return (block.detail || block.content || block.activityLabel || "").trim();
+}
+
+function isNoticeKind(kind) {
+  return kind === "session_event" || kind === "system" || kind === "context";
+}
+
 function renderBlock(block) {
   const el = document.createElement("article");
   el.className = `block ${block.kind}`;
@@ -212,14 +227,30 @@ function renderBlock(block) {
 
   const body = document.createElement("div");
   body.className = "block-body";
-
-  const isUser = block.kind === "user";
-  const isAssistant = block.kind === "assistant" || block.kind === "system" || block.kind === "session_event";
+  const text = blockText(block);
   const collapsed = block.displayMode === "collapsed";
   const truncated = block.displayMode === "truncated";
-  const expanded = block.displayMode === "expanded" || (!block.foldable && !openChild);
-
   const showChrome = block.foldable || openChild || block.kind === "thinking" || block.kind === "tool" || block.kind === "bg_task";
+
+  if (isNoticeKind(block.kind)) {
+    const notice = document.createElement("div");
+    notice.className = "notice";
+    const raw = text || block.title || "";
+    if (/fail|error|required|too large|disk full/i.test(raw)) notice.classList.add("warn");
+    notice.textContent = raw;
+    body.append(notice);
+    el.append(body);
+    return el;
+  }
+
+  if (block.kind === "user") {
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text || block.title || "";
+    body.append(bubble);
+    el.append(body);
+    return el;
+  }
 
   if (showChrome) {
     const line = document.createElement("div");
@@ -238,7 +269,6 @@ function renderBlock(block) {
     meta.textContent = block.status === "running" ? block.activityLabel || "进行中" : block.status === "error" ? "错误" : "";
     line.append(chev, name, title, meta);
     body.append(line);
-
     line.addEventListener("click", () => {
       if (openChild && block.childSessionId) {
         openChildSession(block.childSessionId);
@@ -261,31 +291,23 @@ function renderBlock(block) {
   }
 
   if (openChild && collapsed) {
-    /* one-line only */
+    /* one-line */
   } else if (collapsed && block.foldable) {
     /* folded */
   } else if (truncated) {
     const prev = document.createElement("div");
     prev.className = "preview";
-    prev.textContent = truncate(block.content || block.activityLabel || "", 220);
+    prev.textContent = truncate(text || "", 220);
     body.append(prev);
-  } else if (expanded || isUser || isAssistant || !block.foldable) {
-    if (isUser) {
-      const t = document.createElement("div");
-      t.className = "user-text";
-      t.textContent = block.content || block.title || "";
-      body.append(t);
-    } else {
-      const html = renderMarkdown(block.detail || block.content || "");
-      const wrap = document.createElement("div");
-      wrap.innerHTML = html || "";
-      if (wrap.childNodes.length) body.append(wrap);
-    }
+  } else {
+    const html = renderMarkdown(block.detail || block.content || "");
+    const wrap = document.createElement("div");
+    wrap.className = "md";
+    wrap.innerHTML = html || "";
+    if (wrap.childNodes.length) body.append(wrap);
   }
 
-  const accent = document.createElement("div");
-  accent.className = "accent";
-  el.append(accent, body);
+  el.append(body);
   return el;
 }
 
@@ -296,6 +318,13 @@ function visibleBlocks() {
     const b = state.blocks.get(id);
     if (!b) continue;
     if (sid && b.sessionId && b.sessionId !== sid) continue;
+    const text = blockText(b);
+    const title = (b.title || "").trim();
+    if (!text && !title) continue;
+    if (b.kind === "stub") continue;
+    if (!text && (b.kind === "session_event" || b.kind === "context" || b.kind === "system") && (title === "Session event" || title === "Stub" || title === "Context")) {
+      continue;
+    }
     out.push(b);
   }
   return out;
@@ -422,7 +451,16 @@ function renderPermission() {
 
 function renderChrome() {
   $("hostname").textContent = state.hostname || "未连接";
-  $("view-title").textContent = state.viewChildId ? sessionTitle() : sessionTitle();
+  $("view-title").textContent = sessionTitle();
+  const sub = $("view-sub");
+  if (sub) {
+    const bits = [state.model, state.effort, cwdLabel(state.cwd)].filter(Boolean);
+    sub.textContent = bits.join(" · ");
+  }
+  const chip = $("model-chip");
+  if (chip) {
+    chip.textContent = state.model ? `${state.model}${state.effort ? " · " + state.effort : ""}` : "模型";
+  }
   $("back-btn").hidden = !state.viewChildId;
   $("cancel").hidden = !state.turnRunning;
   $("send").disabled = !state.online || !state.sessionId;
@@ -496,6 +534,17 @@ function onMessage(msg) {
       if (msg.cwd) state.cwd = msg.cwd;
       state.model = msg.model;
       state.turnRunning = !!msg.turnRunning;
+      renderChrome();
+      break;
+    case "commands":
+      if (!forSelectedInstance(msg) && state.instanceId) break;
+      state.commands = msg.commands || [];
+      break;
+    case "models":
+      if (!forSelectedInstance(msg) && state.instanceId) break;
+      state.models = msg.models || [];
+      if (msg.current) state.model = msg.current;
+      if (msg.reasoningEffort) state.effort = msg.reasoningEffort;
       renderChrome();
       break;
     case "snapshot":
@@ -634,18 +683,142 @@ function autoGrow(el) {
   el.style.height = Math.min(el.scrollHeight, 180) + "px";
 }
 
-function sendPrompt() {
+const FALLBACK_COMMANDS = [
+  { name: "model", aliases: ["m"], description: "切换模型", usage: "/model <name> [effort]", takesArgs: true, argsRequired: true },
+  { name: "resume", aliases: ["re"], description: "恢复会话", usage: "/resume", takesArgs: false, argsRequired: false },
+  { name: "new", aliases: ["n"], description: "新会话", usage: "/new", takesArgs: false, argsRequired: false },
+  { name: "compact", aliases: [], description: "压缩上下文", usage: "/compact", takesArgs: false, argsRequired: false },
+  { name: "plan", aliases: [], description: "计划模式", usage: "/plan", takesArgs: false, argsRequired: false },
+  { name: "help", aliases: ["h"], description: "命令帮助", usage: "/help", takesArgs: false, argsRequired: false },
+  { name: "effort", aliases: [], description: "推理强度", usage: "/effort <level>", takesArgs: true, argsRequired: true },
+];
+
+function commandList() {
+  return state.commands.length ? state.commands : FALLBACK_COMMANDS;
+}
+
+function slashQuery(text) {
+  if (!text.startsWith("/")) return null;
+  const m = text.match(/^\/(\S*)(?:\s+([\s\S]*))?$/);
+  if (!m) return null;
+  return { cmd: m[1] || "", args: m[2] ?? null };
+}
+
+function matchCommands(cmd) {
+  const q = cmd.toLowerCase();
+  return commandList()
+    .filter((c) => {
+      if (!q) return true;
+      if (c.name.toLowerCase().startsWith(q) || c.name.toLowerCase().includes(q)) return true;
+      return (c.aliases || []).some((a) => a.toLowerCase().startsWith(q) || a.toLowerCase().includes(q));
+    })
+    .slice(0, 8);
+}
+
+function hideSlash() {
+  const pop = $("slash-pop");
+  if (!pop) return;
+  pop.hidden = true;
+  pop.innerHTML = "";
+  state.slashItems = [];
+}
+
+function showSlash(items, kind) {
+  const pop = $("slash-pop");
+  if (!pop) return;
+  state.slashItems = items;
+  if (state.slashIndex >= items.length) state.slashIndex = 0;
+  if (!items.length) {
+    hideSlash();
+    return;
+  }
+  pop.hidden = false;
+  pop.innerHTML = "";
+  items.forEach((item, i) => {
+    const row = document.createElement("div");
+    row.className = "slash-row" + (i === state.slashIndex ? " active" : "");
+    const left = kind === "model" ? item.name || item.id : `/${item.name}`;
+    const right = kind === "model" ? item.id || "" : item.description || item.usage || "";
+    row.innerHTML = `<span class="cmd"></span><span class="desc"></span>`;
+    row.querySelector(".cmd").textContent = left;
+    row.querySelector(".desc").textContent = right;
+    row.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      state.slashIndex = i;
+      applySlashItem(kind);
+    });
+    pop.append(row);
+  });
+}
+
+function refreshSlash() {
   const text = $("prompt").value;
+  const q = slashQuery(text);
+  if (!q) {
+    hideSlash();
+    return;
+  }
+  const exact = commandList().find((c) => c.name === q.cmd || (c.aliases || []).includes(q.cmd));
+  if (exact && (exact.name === "model" || exact.aliases?.includes("m")) && q.args !== null) {
+    const needle = (q.args || "").trim().toLowerCase();
+    const models = (state.models || []).filter((m) => {
+      if (!needle) return true;
+      return m.name.toLowerCase().includes(needle) || m.id.toLowerCase().includes(needle);
+    });
+    showSlash(models.length ? models : state.models, "model");
+    return;
+  }
+  showSlash(matchCommands(q.cmd), "cmd");
+}
+
+function applySlashItem(kind) {
+  const item = state.slashItems[state.slashIndex];
+  if (!item) return;
+  const prompt = $("prompt");
+  if (kind === "model") {
+    prompt.value = `/model ${item.name} `;
+    hideSlash();
+    autoGrow(prompt);
+    prompt.focus();
+    refreshSlash();
+    return;
+  }
+  prompt.value = item.takesArgs ? `/${item.name} ` : `/${item.name}`;
+  hideSlash();
+  autoGrow(prompt);
+  prompt.focus();
+  if (item.takesArgs) refreshSlash();
+}
+
+function sendPrompt() {
+  const prompt = $("prompt");
+  let text = prompt.value;
+  const pop = $("slash-pop");
+  const open = pop && !pop.hidden && state.slashItems.length;
+  if (open) {
+    const q = slashQuery(text);
+    const kind = q && (q.cmd === "model" || q.cmd === "m") && q.args !== null ? "model" : "cmd";
+    applySlashItem(kind);
+    text = prompt.value;
+    const next = slashQuery(text);
+    if (kind === "model") {
+      text = text.trim();
+    } else {
+      const cmd = commandList().find((c) => c.name === next?.cmd || (c.aliases || []).includes(next?.cmd));
+      if (cmd?.takesArgs && !(next.args || "").trim()) return;
+    }
+  }
   if (!text.trim() || !state.online || !state.sessionId) return;
   sendJson({
     type: "prompt",
     instanceId: state.instanceId,
     sessionId: currentSessionId(),
-    text,
+    text: text.trim(),
     promptId: crypto.randomUUID(),
   });
-  $("prompt").value = "";
-  autoGrow($("prompt"));
+  prompt.value = "";
+  hideSlash();
+  autoGrow(prompt);
 }
 
 function showPicker(machines, msg) {
@@ -695,12 +868,47 @@ $("composer").addEventListener("submit", (e) => {
 });
 
 $("prompt").addEventListener("keydown", (e) => {
+  const pop = $("slash-pop");
+  const open = pop && !pop.hidden && state.slashItems.length;
+  if (open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+    e.preventDefault();
+    const n = state.slashItems.length;
+    state.slashIndex = e.key === "ArrowDown" ? (state.slashIndex + 1) % n : (state.slashIndex - 1 + n) % n;
+    refreshSlash();
+    return;
+  }
+  if (open && e.key === "Tab") {
+    e.preventDefault();
+    const q = slashQuery($("prompt").value);
+    const kind = q && (q.cmd === "model" || q.cmd === "m") && q.args !== null ? "model" : "cmd";
+    applySlashItem(kind);
+    return;
+  }
+  if (open && e.key === "Escape") {
+    e.preventDefault();
+    hideSlash();
+    return;
+  }
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     sendPrompt();
   }
 });
-$("prompt").addEventListener("input", () => autoGrow($("prompt")));
+$("prompt").addEventListener("input", () => {
+  autoGrow($("prompt"));
+  refreshSlash();
+});
+$("model-chip")?.addEventListener("click", () => {
+  if (!state.models.length) {
+    $("prompt").value = "/model ";
+    $("prompt").focus();
+    refreshSlash();
+    return;
+  }
+  $("prompt").value = "/model ";
+  $("prompt").focus();
+  refreshSlash();
+});
 
 $("cancel").addEventListener("click", () => {
   sendJson({ type: "cancel", sessionId: currentSessionId() });

@@ -353,6 +353,11 @@ export class MachineRelay extends DurableObject<Env> {
       return;
     }
 
+    if (msg.type === "commands" || msg.type === "models") {
+      this.broadcastBrowsers({ ...msg, instanceId });
+      return;
+    }
+
     const live = ["snapshot", "block_upsert", "block_remove", "subagent_upsert", "task_upsert", "permission_request", "permission_clear"];
     if (live.includes(msg.type)) {
       const watched = this.watchedInstanceIds();
