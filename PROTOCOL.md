@@ -56,8 +56,11 @@ Static assets under `public/` (HTML/CSS/JS). Worker runs first for `/api/*`,
 `/agent/*`, `/browser/*`, `/oauth-login` (can be static with JS), `/register`,
 `/login`, `/app`.
 
-Cookie: `gc_session` HttpOnly Secure SameSite=Lax, HMAC-signed payload
-`{userId, exp}` using `AUTH_SECRET`. 30 day expiry.
+Session: HS256 JWT (`sub`/`userId`, `exp`, `iat`) signed with `AUTH_SECRET`, 30 day expiry.
+Issued on login/register/`GET /api/me`. Stored as HttpOnly `gc_session` cookie **and**
+returned as `token` in JSON so the browser keeps `localStorage.gc_jwt` and sends
+`Authorization: Bearer`. `GET /login` and `GET /register` redirect to `/app` when
+the cookie is still valid. Legacy two-part `body.sig` cookies still verify.
 
 Passwords: PBKDF2-SHA256, 100_000 iterations, 16-byte random salt, stored as
 `pbkdf2$100000$<salt_b64>$<hash_b64>`.

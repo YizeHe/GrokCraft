@@ -1,3 +1,5 @@
+import { sessionUser } from "./api.js";
+
 const INSTALL_CMD = "irm https://grokcraft.tanyuntech.cn/install.ps1 | iex";
 
 const DONATE = [
@@ -84,6 +86,15 @@ function showDonate() {
   }
   overlay.hidden = false;
 }
+
+sessionUser().then((me) => {
+  if (!me) return;
+  for (const a of document.querySelectorAll('a[href="/login"], a[href^="/login?"]')) {
+    a.setAttribute("href", "/app");
+    const label = (a.textContent || "").trim();
+    if (label === "登录" || label === "已有账号") a.textContent = "进入工作台";
+  }
+});
 
 document.getElementById("nav-download")?.addEventListener("click", (e) => {
   e.preventDefault();

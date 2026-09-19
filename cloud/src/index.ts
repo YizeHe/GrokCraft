@@ -1,7 +1,7 @@
 import { MachineRelay } from "./relay";
 import {
   clearSessionCookieHeader,
-  issueSessionCookie,
+  issueSession,
   normalizeEmail,
   readSessionUser,
   validateEmail,
@@ -129,10 +129,10 @@ async function handleRegister(request: Request, env: Env): Promise<Response> {
     if (msg.toLowerCase().includes("unique")) return errorJson(409, "该邮箱已注册");
     return errorJson(500, "注册失败");
   }
-  const cookie = await issueSessionCookie(env, request, id);
+  const issued = await issueSession(env, request, id);
   return json(
-    { id, email },
-    { status: 201, headers: { "Set-Cookie": cookie } },
+    { id, email, token: issued.token, exp: issued.exp },
+    { status: 201, headers: { "Set-Cookie": issued.cookie } },
   );
 }
 
@@ -179,8 +179,11 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   const ok = await verifyPassword(password, user?.password_hash || LOGIN_DUMMY_HASH);
   if (user && ok) {
     await clearLoginLockout(env.DB, email);
-    const cookie = await issueSessionCookie(env, request, user.id);
-    return json({ id: user.id, email: user.email }, { headers: { "Set-Cookie": cookie } });
+    const issued = await issueSession(env, request, user.id);
+    return json(
+      { id: user.id, email: user.email, token: issued.token, exp: issued.exp },
+      { headers: { "Set-Cookie": issued.cookie } },
+    );
   }
 
   failStreak += 1;
@@ -214,7 +217,11 @@ async function handleLogout(request: Request): Promise<Response> {
 async function handleMe(env: Env, request: Request): Promise<Response> {
   const user = await readSessionUser(env, request);
   if (!user) return errorJson(401, "未登录");
-  return json({ id: user.id, email: user.email });
+  const issued = await issueSession(env, request, user.id);
+  return json(
+    { id: user.id, email: user.email, token: issued.token, exp: issued.exp },
+    { headers: { "Set-Cookie": issued.cookie } },
+  );
 }
 
 async function handleMachines(env: Env, request: Request): Promise<Response> {
@@ -378,6 +385,12 @@ async function serveAsset(env: Env, request: Request, assetPath: string): Promis
   return new Response(res.body, { status: res.status, headers });
 }
 
+function safeNextPath(request: Request, fallback: string): string {
+  const next = new URL(request.url).searchParams.get("next") || "";
+  if (next.startsWith("/") && !next.startsWith("//")) return next;
+  return fallback;
+}
+
 async function handleApp(env: Env, request: Request): Promise<Response> {
   const user = await readSessionUser(env, request);
   if (!user) {
@@ -388,6 +401,14 @@ async function handleApp(env: Env, request: Request): Promise<Response> {
   // Pretty URL `/app` is what the asset mapper actually serves as 200.
   // Fetching `/app.html` 307s back here and the browser hits ERR_TOO_MANY_REDIRECTS.
   return serveAsset(env, request, "/app");
+}
+
+async function handleAuthPage(env: Env, request: Request, assetPath: string): Promise<Response> {
+  const user = await readSessionUser(env, request);
+  if (user) {
+    return Response.redirect(new URL(safeNextPath(request, "/app"), request.url).toString(), 302);
+  }
+  return serveAsset(env, request, assetPath);
 }
 
 async function handleApi(env: Env, request: Request, url: URL): Promise<Response> {
@@ -415,6 +436,10 @@ export default {
       if (path === "/agent/ws") return await handleAgentWs(env, request, url);
       if (path === "/browser/ws") return await handleBrowserWs(env, request, url);
       if (path === "/app" || path.startsWith("/app/")) return await handleApp(env, request);
+      if (path === "/login" || path === "/login/") return await handleAuthPage(env, request, "/login");
+      if (path === "/register" || path === "/register/") {
+        return await handleAuthPage(env, request, "/register");
+      }
       return await env.ASSETS.fetch(request);
     } catch (err) {
       const message = err instanceof Error ? err.message : "internal_error";

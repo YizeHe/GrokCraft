@@ -14,7 +14,17 @@
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/api/*", "/agent/*", "/browser/*", "/app", "/app/*"]
+    "run_worker_first": [
+      "/api/*",
+      "/agent/*",
+      "/browser/*",
+      "/app",
+      "/app/*",
+      "/login",
+      "/login/*",
+      "/register",
+      "/register/*"
+    ]
   },
   "d1_databases": [
     {

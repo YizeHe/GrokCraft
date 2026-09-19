@@ -1,4 +1,4 @@
-import { api, nextTarget, qs } from "./api.js";
+import { api, nextTarget, qs, sessionUser } from "./api.js";
 
 const form = document.getElementById("form");
 const errEl = document.getElementById("err");
@@ -12,6 +12,15 @@ function nextHref() {
 }
 
 nextHref();
+
+if (form) form.hidden = true;
+sessionUser().then((me) => {
+  if (me) {
+    location.replace(nextTarget());
+    return;
+  }
+  if (form) form.hidden = false;
+});
 
 function turnstileValue(root) {
   const input = root.querySelector('input[name="cf-turnstile-response"]');

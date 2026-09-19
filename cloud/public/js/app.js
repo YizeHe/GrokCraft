@@ -1,4 +1,4 @@
-import { api, qs } from "./api.js";
+import { api, clearJwt, getJwt, qs } from "./api.js";
 import { renderMarkdown, truncate } from "./markdown.js";
 
 const $ = (id) => document.getElementById(id);
@@ -1340,7 +1340,10 @@ function connectWs() {
     }
   }
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const ws = new WebSocket(`${proto}//${location.host}/browser/ws?machineId=${encodeURIComponent(state.machineId)}`);
+  const params = new URLSearchParams({ machineId: state.machineId });
+  const jwt = getJwt();
+  if (jwt) params.set("access_token", jwt);
+  const ws = new WebSocket(`${proto}//${location.host}/browser/ws?${params}`);
   state.ws = ws;
   ws.addEventListener("open", () => {
     state.reconnectAttempt = 0;
@@ -1633,7 +1636,12 @@ $("menu-btn").addEventListener("click", () => document.body.classList.add("drawe
 $("drawer-backdrop").addEventListener("click", () => document.body.classList.remove("drawer-open"));
 
 $("logout").addEventListener("click", async () => {
-  await api("/api/logout", { method: "POST" });
+  try {
+    await api("/api/logout", { method: "POST" });
+  } catch {
+    /* still leave */
+  }
+  clearJwt();
   location.href = "/login";
 });
 
