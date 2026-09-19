@@ -13,10 +13,17 @@ Thumbs.db
 cloud/.wrangler/
 cloud/node_modules/
 cloud/worker-configuration.d.ts
-D:\cargo\
-D:\rustup\
 *.pdb
 *.exe
 !cloud/public/**
 .env
 .env.*
+
+# Nested / reference clones — not part of this repo
+/grok-build/
+/grok-app/
+
+# Local scratch
+/2.png
+/3.png
+/grokcraft.png
