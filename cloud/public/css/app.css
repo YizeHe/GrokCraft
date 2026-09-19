@@ -1226,7 +1226,6 @@ html.app .title-stack .sub {
   white-space: nowrap;
 }
 html.app .head-status {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1339,6 +1338,8 @@ html.app .composer-dock {
 html.app #composer {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-end;
   gap: 6px;
   width: min(560px, 100%);
   max-width: 560px;
@@ -1348,16 +1349,24 @@ html.app #composer {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  text-align: left;
 }
 html.app #composer textarea {
-  min-height: 28px;
+  display: block;
+  width: 100%;
+  flex: 0 0 auto;
+  align-self: stretch;
+  min-height: 44px;
   max-height: 180px;
   background: transparent;
   border: 0;
   box-shadow: none;
-  padding: 6px 8px 2px;
+  padding: 8px 10px 4px;
   border-radius: 0;
   font-size: 15px;
+  text-align: left;
+  direction: ltr;
+  resize: none;
 }
 html.app #composer textarea:focus {
   box-shadow: none;
@@ -1473,6 +1482,40 @@ html.app .more-btn {
 html.app .more-btn:hover {
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.9);
+}
+html.app .ctx-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 132px;
+  padding: 6px;
+  background: rgba(28, 28, 30, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+html.app .ctx-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.88);
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+html.app .ctx-menu button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+html.app .head-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+html.app .head-links .icon-btn {
+  text-decoration: none;
 }
 .install-cmd {
   background: #101010;

@@ -207,11 +207,13 @@ function openUsageModal(text) {
 }
 
 function notifyDone(body) {
+  if (!document.hidden) return;
+  if (!window.Notification || Notification.permission !== "granted") return;
   const title = "Grokcraft";
   const payload = { type: "notify", title, body: body || "任务已完成", tag: "grok-done" };
   if (navigator.serviceWorker?.controller) {
     navigator.serviceWorker.controller.postMessage(payload);
-  } else if (window.Notification && Notification.permission === "granted") {
+  } else {
     try {
       new Notification(title, { body: payload.body, icon: "/favicon.svg" });
     } catch {
@@ -220,10 +222,40 @@ function notifyDone(body) {
   }
 }
 
-function maybeAskNotify() {
-  if (!window.Notification || Notification.permission !== "default") return;
-  Notification.requestPermission().catch(() => {});
+function closeCtxMenu() {
+  document.querySelector(".ctx-menu")?.remove();
 }
+
+function showCtxMenu(event, items) {
+  closeCtxMenu();
+  const menu = document.createElement("div");
+  menu.className = "ctx-menu";
+  for (const item of items) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = item.label;
+    b.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      closeCtxMenu();
+      item.run();
+    });
+    menu.append(b);
+  }
+  document.body.append(menu);
+  const pad = 8;
+  const w = menu.offsetWidth || 132;
+  const h = menu.offsetHeight || 44;
+  let x = event.clientX;
+  let y = event.clientY;
+  if (x + w > window.innerWidth - pad) x = window.innerWidth - w - pad;
+  if (y + h > window.innerHeight - pad) y = window.innerHeight - h - pad;
+  menu.style.left = `${Math.max(pad, x)}px`;
+  menu.style.top = `${Math.max(pad, y)}px`;
+}
+
+document.addEventListener("click", closeCtxMenu);
+document.addEventListener("scroll", closeCtxMenu, true);
 
 function renderTree() {
   const root = $("project-tree");
@@ -267,8 +299,9 @@ function renderTree() {
     const n = (inst.sessions || []).filter((s) => !s.isChild).length;
     head.querySelector(".meta").textContent = n ? `${n}` : "";
     head.querySelector(".more-btn").addEventListener("click", (e) => {
+      e.preventDefault();
       e.stopPropagation();
-      hideInstance(inst.instanceId);
+      showCtxMenu(e, [{ label: "隐藏", run: () => hideInstance(inst.instanceId) }]);
     });
     head.addEventListener("click", () => {
       state.expanded[inst.instanceId] = !open;
@@ -297,8 +330,9 @@ function renderTree() {
           row.querySelector(".title").after(busy);
         }
         row.querySelector(".more-btn").addEventListener("click", (e) => {
+          e.preventDefault();
           e.stopPropagation();
-          hideInstance(inst.instanceId);
+          showCtxMenu(e, [{ label: "隐藏", run: () => hideInstance(inst.instanceId) }]);
         });
         row.addEventListener("click", () => selectSession(inst.instanceId, s.id));
         box.append(row);
@@ -661,7 +695,6 @@ function onMessage(msg) {
       state.model = msg.model;
       if (msg.turnRunning && !state.turnRunning) {
         state.notifiedTurn = false;
-        maybeAskNotify();
       }
       if (!msg.turnRunning && state.turnRunning && !state.notifiedTurn) {
         state.notifiedTurn = true;
