@@ -250,16 +250,11 @@ function fmtUsd(v) {
 function mergeUsage(prev, next) {
   const base = prev && typeof prev === "object" ? prev : {};
   const incoming = next && typeof next === "object" ? next : {};
-  const mergeTab = (a, b) => {
-    if (b == null) return a || undefined;
-    if (typeof b !== "object") return a;
-    return { ...(a && typeof a === "object" ? a : {}), ...b };
-  };
   return {
     text: incoming.text || base.text || "",
-    context: mergeTab(base.context, incoming.context),
-    limit: mergeTab(base.limit, incoming.limit),
-    session: mergeTab(base.session, incoming.session),
+    context: incoming.context != null ? incoming.context : base.context,
+    limit: incoming.limit != null ? incoming.limit : base.limit,
+    session: incoming.session != null ? incoming.session : base.session,
   };
 }
 
@@ -381,18 +376,22 @@ function fillContextPane(pane, payload) {
 
   const system = asNum(pickVal(ctx, "systemPromptTokens", "systemPrompt", "system_prompt", "system_prompt_tokens")) || 0;
   const messages = asNum(pickVal(ctx, "messageTokens", "messages", "message", "message_tokens")) || 0;
+  const tools = asNum(pickVal(ctx, "toolDefinitionsTokens", "toolDefinitions", "tool_definitions", "tool_definitions_tokens")) || 0;
+  const toolCount = asNum(pickVal(ctx, "toolDefinitionsCount", "tool_definitions_count"));
   const free = asNum(pickVal(ctx, "freeTokens", "free", "free_tokens"));
   const freeTok = free != null ? free : Math.max(0, total - used);
-  const overhead = Math.max(0, used - system - messages);
+  const overhead = Math.max(0, used - system - messages - tools);
   const sysPct = total ? (system / total) * 100 : 0;
   const msgPct = total ? (messages / total) * 100 : 0;
+  const toolPct = total ? (tools / total) * 100 : 0;
   const ohPct = total ? (overhead / total) * 100 : 0;
   const freePct = total ? (freeTok / total) * 100 : 0;
   pane.append(
     stackedBar([
       { pct: sysPct, cls: "sys", label: "System prompt" },
+      { pct: toolPct, cls: "tools", label: "Tool definitions" },
       { pct: msgPct, cls: "msg", label: "Messages" },
-      { pct: ohPct, cls: "oh", label: "Reasoning/overhead" },
+      { pct: ohPct, cls: "oh", label: "Other" },
       { pct: freePct, cls: "free", label: "Free" },
     ]),
   );
@@ -400,15 +399,11 @@ function fillContextPane(pane, payload) {
   const list = document.createElement("div");
   list.className = "usage-breakdown";
   list.append(breakdownRow("sys", "System prompt", system));
+  const toolExtra = toolCount != null ? `${toolCount} tool${toolCount === 1 ? "" : "s"}` : "";
+  list.append(breakdownRow("tools", "Tool definitions", tools, toolExtra));
   list.append(breakdownRow("msg", "Messages", messages));
-  if (overhead > 0) list.append(breakdownRow("oh", "Reasoning/overhead", overhead));
+  if (overhead > 0) list.append(breakdownRow("oh", "Other", overhead));
   list.append(breakdownRow("free", "Free", freeTok));
-  const tools = asNum(pickVal(ctx, "toolDefinitionsTokens", "toolDefinitions", "tool_definitions", "tool_definitions_tokens"));
-  const toolCount = asNum(pickVal(ctx, "toolDefinitionsCount", "tool_definitions_count"));
-  if (tools != null) {
-    const extra = toolCount != null ? `${toolCount} tool${toolCount === 1 ? "" : "s"}` : "";
-    list.append(breakdownRow("tools", "Tool definitions", tools, extra));
-  }
   const cats = pickVal(ctx, "categories", "usage_categories") || [];
   if (Array.isArray(cats)) {
     for (const c of cats) {
@@ -426,6 +421,13 @@ function fillContextPane(pane, payload) {
     foot.className = "usage-foot";
     foot.textContent = `Turns: ${turns ?? "—"}  ·  Tool calls: ${calls ?? "—"}  ·  Compactions: ${comps ?? "—"}`;
     pane.append(foot);
+  }
+  const autoCompact = asNum(pickVal(ctx, "autoCompactThresholdPercent", "auto_compact_threshold_percent"));
+  if (autoCompact != null) {
+    const ac = document.createElement("div");
+    ac.className = "usage-foot";
+    ac.textContent = `Auto-compact at ${autoCompact}%`;
+    pane.append(ac);
   }
 }
 

@@ -277,6 +277,72 @@ transcript (back button → parent snapshot).
 }
 ```
 
+## Usage (`/usage` modal, TUI parity)
+
+`text` is a concatenated fallback of the three tabs (old clients). Structured
+tabs are optional and omitted when unknown. Loading / error / no-session copy
+matches the TUI: `Loading context usage…`, `Couldn't load context usage: …`,
+`No active session.`, `Loading usage…`, `Couldn't load usage: …`,
+`Usage limits are managed by your team.`, `Please check your usage on {url}`,
+`No billing data available.`, `Loading session usage…`,
+`Loading session info…`, `Couldn't load session info: …`.
+
+```jsonc
+{
+  "type": "usage",
+  "text": "Context usage\n…\n\nUsage limit\n…\n\nSession info\n…",
+  "context": {
+    "loading": false,
+    "error": null,                 // omitted when none
+    "noSession": false,
+    "model": "grok-4",
+    "used": 36700,
+    "total": 1000000,
+    "usagePct": 4,
+    "systemPromptTokens": 1200,
+    "toolDefinitionsTokens": 5600,
+    "toolDefinitionsCount": 12,
+    "messageTokens": 29900,
+    "freeTokens": 963300,
+    "turnCount": 5,
+    "toolCallCount": 12,
+    "compactionCount": 0,
+    "lines": ["Context", "", "36.7k / 1.0m tokens (3.67%)", "…"]
+  },
+  "limit": {
+    "loading": false,
+    "error": null,
+    "chatKind": false,
+    "teamManaged": false,
+    "billingRedirectUrl": null,
+    "plan": "SuperGrok",
+    "usageLabel": "Weekly limit",
+    "usagePct": 50.67,
+    "periodEndDisplay": "May 29, 00:00",
+    "prepaidCents": 1234,
+    "payAsYouGo": true,
+    "payAsYouGoUsedCents": 0,
+    "payAsYouGoCapCents": 10000,
+    "summary": "Weekly limit: 50%\nNext reset: May 29, 00:00",
+    "sessionUsageText": "Session\n…",
+    "lines": ["Weekly limit (SuperGrok)", "", "████░░░░  50%", "Resets: May 29, 00:00"]
+  },
+  "session": {
+    "loading": false,
+    "error": null,
+    "noSession": false,
+    "fields": [{ "label": "Session ID", "value": "sid-123", "compact": false }],
+    "sessionUsageText": "Session\n…",
+    "lines": ["Session ID:", "sid-123"]
+  }
+}
+```
+
+`context.lines` prefers the same rows as TUI `ContextInfoBlock.lines_for_width`.
+`limit` combines `format_usage_summary` (`summary`) with allowance fields
+(`usageLabel`, `usagePct`, `periodEndDisplay`, `prepaidCents`, pay-as-you-go).
+`session.fields` is `{ label, value, compact }` matching TUI `SessionInfoField`.
+
 ## Pairing user code
 
 - 8 characters from alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no 0/O/1/I).
