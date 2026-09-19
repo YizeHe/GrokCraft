@@ -20,7 +20,6 @@ cloud/worker-configuration.d.ts
 .env.*
 
 # Nested / reference clones — not part of this repo
-/grok-build/
 /grok-app/
 
 # Local scratch
