@@ -30,3 +30,11 @@ CREATE TABLE IF NOT EXISTS pairings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_machines_user ON machines(user_id);
+
+CREATE TABLE IF NOT EXISTS login_lockouts (
+  email TEXT PRIMARY KEY COLLATE NOCASE,
+  fail_streak INTEGER NOT NULL DEFAULT 0,
+  day_key TEXT NOT NULL DEFAULT '',
+  lock_until INTEGER NOT NULL DEFAULT 0,
+  day_locked INTEGER NOT NULL DEFAULT 0
+);

@@ -35,6 +35,8 @@ const state = {
   slashItems: [],
   hiddenIds: [],
   notifiedTurn: false,
+  usageTab: "limit",
+  usagePayload: null,
 };
 
 function currentSessionId() {
@@ -154,6 +156,8 @@ function openAppModal(title, bodyNode) {
   const overlay = $("app-modal");
   const card = $("app-modal-card");
   if (!overlay || !card) return;
+  card.classList.remove("usage-picker");
+  delete card.dataset.kind;
   card.innerHTML = `<h2></h2><div class="modal-body"></div>`;
   card.querySelector("h2").textContent = title;
   card.querySelector(".modal-body").append(bodyNode);
@@ -163,6 +167,11 @@ function openAppModal(title, bodyNode) {
 function closeAppModal() {
   const overlay = $("app-modal");
   if (overlay) overlay.hidden = true;
+  const card = $("app-modal-card");
+  if (card) {
+    card.classList.remove("usage-picker");
+    delete card.dataset.kind;
+  }
 }
 
 function openResumeModal() {
@@ -199,11 +208,518 @@ function openResumeModal() {
   openAppModal("恢复会话", box);
 }
 
-function openUsageModal(text) {
+function pickVal(obj, ...keys) {
+  if (!obj || typeof obj !== "object") return undefined;
+  for (const k of keys) {
+    if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+  }
+  return undefined;
+}
+
+function asNum(v) {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() && Number.isFinite(Number(v))) return Number(v);
+  return null;
+}
+
+function fmtTok(n) {
+  const v = asNum(n);
+  if (v == null) return "—";
+  if (v >= 99_500) return `${Math.round(v / 1000)}k`;
+  if (v >= 1_000) return `${(v / 1000).toFixed(1)}k`;
+  return String(Math.round(v));
+}
+
+function fmtTokBig(n) {
+  const v = asNum(n);
+  if (v == null) return "—";
+  if (v >= 999_950) return `${(v / 1_000_000).toFixed(1)}m`;
+  if (v >= 99_500) return `${Math.round(v / 1000)}k`;
+  if (v >= 1_000) return `${(v / 1000).toFixed(1)}k`;
+  return String(Math.round(v));
+}
+
+function fmtUsd(v) {
+  if (typeof v === "string" && v.trim()) return v.startsWith("$") ? v : v;
+  const n = asNum(v);
+  if (n == null) return null;
+  const dollars = Math.abs(n) >= 100 && Number.isInteger(n) ? n / 100 : n;
+  return `$${dollars.toFixed(2)}`;
+}
+
+function mergeUsage(prev, next) {
+  const base = prev && typeof prev === "object" ? prev : {};
+  const incoming = next && typeof next === "object" ? next : {};
+  const mergeTab = (a, b) => {
+    if (b == null) return a || undefined;
+    if (typeof b !== "object") return a;
+    return { ...(a && typeof a === "object" ? a : {}), ...b };
+  };
+  return {
+    text: incoming.text || base.text || "",
+    context: mergeTab(base.context, incoming.context),
+    limit: mergeTab(base.limit, incoming.limit),
+    session: mergeTab(base.session, incoming.session),
+  };
+}
+
+function isUsageModalOpen() {
+  const overlay = $("app-modal");
+  const card = $("app-modal-card");
+  return !!(overlay && !overlay.hidden && card?.dataset.kind === "usage");
+}
+
+function usageMuted(text) {
+  const p = document.createElement("p");
+  p.className = "usage-muted";
+  p.textContent = text;
+  return p;
+}
+
+function usagePre(text) {
   const pre = document.createElement("pre");
-  pre.className = "install-cmd";
-  pre.textContent = text || "正在读取用量…";
-  openAppModal("用量", pre);
+  pre.className = "install-cmd usage-fallback";
+  pre.textContent = text || "无用量数据";
+  return pre;
+}
+
+function usagePctOf(used, total, explicit) {
+  const p = asNum(explicit);
+  if (p != null) return Math.max(0, Math.min(100, p));
+  const u = asNum(used);
+  const t = asNum(total);
+  if (u == null || t == null || t <= 0) return 0;
+  return Math.max(0, Math.min(100, (u / t) * 100));
+}
+
+function stackedBar(segments) {
+  const bar = document.createElement("div");
+  bar.className = "usage-bar";
+  bar.setAttribute("role", "img");
+  const total = segments.reduce((s, x) => s + Math.max(0, x.pct || 0), 0) || 1;
+  for (const seg of segments) {
+    const pct = Math.max(0, seg.pct || 0);
+    if (pct <= 0) continue;
+    const slice = document.createElement("span");
+    slice.className = `usage-bar-seg ${seg.cls || ""}`;
+    slice.style.width = `${(pct / total) * 100}%`;
+    slice.title = seg.label || "";
+    bar.append(slice);
+  }
+  return bar;
+}
+
+function meterBar(pct) {
+  const wrap = document.createElement("div");
+  wrap.className = "usage-meter";
+  const fill = document.createElement("span");
+  fill.className = "usage-meter-fill";
+  fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+  wrap.append(fill);
+  return wrap;
+}
+
+function breakdownRow(dotCls, label, tokens, extra) {
+  const row = document.createElement("div");
+  row.className = "usage-row";
+  const left = document.createElement("div");
+  left.className = "usage-row-label";
+  const dot = document.createElement("span");
+  dot.className = `usage-dot ${dotCls}`;
+  const name = document.createElement("span");
+  name.textContent = label;
+  left.append(dot, name);
+  const right = document.createElement("div");
+  right.className = "usage-row-val";
+  right.textContent = extra ? `${fmtTok(tokens)} tokens  ·  ${extra}` : `${fmtTok(tokens)} tokens`;
+  row.append(left, right);
+  return row;
+}
+
+function fillContextPane(pane, payload) {
+  pane.replaceChildren();
+  const ctx = payload.context;
+  const text = payload.text || "";
+  if (ctx?.error) {
+    pane.append(usageMuted(`Couldn't load context usage: ${ctx.error}`));
+    return;
+  }
+  if (ctx?.noSession) {
+    pane.append(usageMuted("No active session."));
+    return;
+  }
+  const used = asNum(pickVal(ctx, "used"));
+  const total = asNum(pickVal(ctx, "total"));
+  const hasNums = used != null && total != null;
+  if (!hasNums) {
+    if (ctx?.loading || !ctx) {
+      pane.append(usageMuted(ctx ? "Loading context usage…" : text || "Loading context usage…"));
+      if (!ctx && text) pane.append(usagePre(text));
+      return;
+    }
+    pane.append(usagePre(text || "无用量数据"));
+    return;
+  }
+  const pct = usagePctOf(used, total, pickVal(ctx, "usagePct", "usage_pct"));
+  const model = pickVal(ctx, "model") || "";
+  const head = document.createElement("div");
+  head.className = "usage-head";
+  const title = document.createElement("div");
+  title.className = "usage-kicker";
+  title.textContent = "Context";
+  const nums = document.createElement("div");
+  nums.className = "usage-hero";
+  nums.textContent = `${fmtTokBig(used)} / ${fmtTokBig(total)} tokens (${pct.toFixed(2)}%)`;
+  head.append(title, nums);
+  if (model) {
+    const m = document.createElement("div");
+    m.className = "usage-model";
+    m.textContent = String(model);
+    head.append(m);
+  }
+  pane.append(head);
+
+  const system = asNum(pickVal(ctx, "systemPromptTokens", "systemPrompt", "system_prompt", "system_prompt_tokens")) || 0;
+  const messages = asNum(pickVal(ctx, "messageTokens", "messages", "message", "message_tokens")) || 0;
+  const free = asNum(pickVal(ctx, "freeTokens", "free", "free_tokens"));
+  const freeTok = free != null ? free : Math.max(0, total - used);
+  const overhead = Math.max(0, used - system - messages);
+  const sysPct = total ? (system / total) * 100 : 0;
+  const msgPct = total ? (messages / total) * 100 : 0;
+  const ohPct = total ? (overhead / total) * 100 : 0;
+  const freePct = total ? (freeTok / total) * 100 : 0;
+  pane.append(
+    stackedBar([
+      { pct: sysPct, cls: "sys", label: "System prompt" },
+      { pct: msgPct, cls: "msg", label: "Messages" },
+      { pct: ohPct, cls: "oh", label: "Reasoning/overhead" },
+      { pct: freePct, cls: "free", label: "Free" },
+    ]),
+  );
+
+  const list = document.createElement("div");
+  list.className = "usage-breakdown";
+  list.append(breakdownRow("sys", "System prompt", system));
+  list.append(breakdownRow("msg", "Messages", messages));
+  if (overhead > 0) list.append(breakdownRow("oh", "Reasoning/overhead", overhead));
+  list.append(breakdownRow("free", "Free", freeTok));
+  const tools = asNum(pickVal(ctx, "toolDefinitionsTokens", "toolDefinitions", "tool_definitions", "tool_definitions_tokens"));
+  const toolCount = asNum(pickVal(ctx, "toolDefinitionsCount", "tool_definitions_count"));
+  if (tools != null) {
+    const extra = toolCount != null ? `${toolCount} tool${toolCount === 1 ? "" : "s"}` : "";
+    list.append(breakdownRow("tools", "Tool definitions", tools, extra));
+  }
+  const cats = pickVal(ctx, "categories", "usage_categories") || [];
+  if (Array.isArray(cats)) {
+    for (const c of cats) {
+      if (!c) continue;
+      list.append(breakdownRow("tools", c.label || "Category", c.tokens, c.detail || ""));
+    }
+  }
+  pane.append(list);
+
+  const turns = asNum(pickVal(ctx, "turnCount", "turns", "turn_count"));
+  const calls = asNum(pickVal(ctx, "toolCallCount", "toolCalls", "tool_calls", "tool_call_count"));
+  const comps = asNum(pickVal(ctx, "compactionCount", "compactions", "compaction_count"));
+  if (turns != null || calls != null || comps != null) {
+    const foot = document.createElement("div");
+    foot.className = "usage-foot";
+    foot.textContent = `Turns: ${turns ?? "—"}  ·  Tool calls: ${calls ?? "—"}  ·  Compactions: ${comps ?? "—"}`;
+    pane.append(foot);
+  }
+}
+
+function fillLimitPane(pane, payload) {
+  pane.replaceChildren();
+  const lim = payload.limit;
+  const text = payload.text || "";
+  if (!lim) {
+    if (text) pane.append(usagePre(text));
+    else pane.append(usageMuted("Loading usage…"));
+    return;
+  }
+  if (lim.chatKind || lim.chat_kind) {
+    /* gateway chat: no build credits */
+  } else if (lim.teamManaged || lim.team_managed) {
+    pane.append(usageMuted("Usage limits are managed by your team."));
+  } else {
+    const url = pickVal(lim, "billingRedirectUrl", "redirectUrl", "redirect_url");
+    if (url) {
+      const p = document.createElement("p");
+      p.className = "usage-muted";
+      p.append("Please check your usage on ");
+      const a = document.createElement("a");
+      a.href = String(url);
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = String(url);
+      p.append(a);
+      pane.append(p);
+    } else if (lim.error) {
+      pane.append(usageMuted(`Couldn't load usage: ${lim.error}`));
+    } else if (lim.loading && asNum(pickVal(lim, "usagePct", "usage_pct")) == null) {
+      pane.append(usageMuted("Loading usage…"));
+    } else if (asNum(pickVal(lim, "usagePct", "usage_pct")) == null && !pickVal(lim, "usageLabel", "usage_label", "plan")) {
+      pane.append(usageMuted("No billing data available."));
+    } else {
+      const label = pickVal(lim, "usageLabel", "usage_label") || "Usage";
+      const plan = pickVal(lim, "plan", "subscription_tier");
+      const header = document.createElement("div");
+      header.className = "usage-kicker";
+      header.textContent = plan ? `${label} (${plan})` : String(label);
+      pane.append(header);
+      const pct = usagePctOf(null, null, pickVal(lim, "usagePct", "usage_pct"));
+      const meterRow = document.createElement("div");
+      meterRow.className = "usage-meter-row";
+      meterRow.append(meterBar(pct));
+      const pctEl = document.createElement("span");
+      pctEl.className = "usage-pct";
+      pctEl.textContent = `${Math.floor(pct)}%`;
+      meterRow.append(pctEl);
+      pane.append(meterRow);
+      const resets = pickVal(lim, "resets", "period_end_display", "periodEndDisplay");
+      if (resets) {
+        const r = document.createElement("div");
+        r.className = "usage-muted";
+        r.textContent = `Resets: ${resets}`;
+        pane.append(r);
+      }
+      const prepaidCents = asNum(pickVal(lim, "prepaidCents", "prepaid_cents"));
+      const credits = pickVal(lim, "credits", "prepaid_balance_cents", "prepaidBalanceCents");
+      if (prepaidCents != null && prepaidCents > 0) {
+        const line = document.createElement("div");
+        line.className = "usage-line";
+        line.textContent = `Credits: $${(prepaidCents / 100).toFixed(2)}`;
+        pane.append(line);
+      } else if (credits != null && credits !== 0 && credits !== "0") {
+        const line = document.createElement("div");
+        line.className = "usage-line";
+        const dollars = typeof credits === "string" ? credits : fmtUsd(credits);
+        line.textContent = `Credits: ${dollars}`;
+        pane.append(line);
+      }
+      const topup = pickVal(lim, "autoTopup", "auto_topup");
+      if (topup && typeof topup === "object") {
+        const line = document.createElement("div");
+        line.className = "usage-muted";
+        if (topup.enabled && (topup.amount != null || topup.topup_amount_cents != null)) {
+          line.textContent = `Auto topup: ${fmtUsd(pickVal(topup, "amount", "topup_amount_cents")) || ""}`;
+        } else if (topup.enabled === false) {
+          line.textContent = "Auto topup: disabled";
+        }
+        if (line.textContent) pane.append(line);
+      } else if (typeof topup === "string" && topup) {
+        const line = document.createElement("div");
+        line.className = "usage-muted";
+        line.textContent = topup.includes(":") ? topup : `Auto topup: ${topup}`;
+        pane.append(line);
+      }
+      const payg = pickVal(lim, "payAsYouGo", "pay_as_you_go", "payg");
+      const paygUsedCents = asNum(pickVal(lim, "payAsYouGoUsedCents", "pay_as_you_go_used_cents"));
+      const paygCapCents = asNum(pickVal(lim, "payAsYouGoCapCents", "pay_as_you_go_cap_cents"));
+      if (payg || paygUsedCents != null || paygCapCents != null) {
+        const title = document.createElement("div");
+        title.className = "usage-kicker";
+        title.textContent = "Pay as you go: Enabled";
+        pane.append(title);
+        let used;
+        let cap;
+        if (typeof payg === "object") {
+          used = fmtUsd(pickVal(payg, "used", "on_demand_used_cents"));
+          cap = fmtUsd(pickVal(payg, "cap", "on_demand_cap_cents"));
+        } else {
+          used = paygUsedCents != null ? `$${(paygUsedCents / 100).toFixed(2)}` : null;
+          cap = paygCapCents != null ? `$${(paygCapCents / 100).toFixed(2)}` : null;
+        }
+        if (used || cap) {
+          const sub = document.createElement("div");
+          sub.className = "usage-muted";
+          sub.textContent = `Usage: ${used || "$0.00"} / ${cap || "$0.00"} per month`;
+          pane.append(sub);
+        }
+      }
+    }
+  }
+  const sessionUsage = pickVal(lim, "sessionUsageText", "session_usage_text");
+  if (sessionUsage) {
+    const block = document.createElement("pre");
+    block.className = "usage-session-text";
+    block.textContent = String(sessionUsage);
+    pane.append(block);
+  } else if (!lim.error && currentSessionId()) {
+    const pending = document.createElement("div");
+    pending.className = "usage-muted";
+    pending.textContent = "Loading session usage…";
+    pane.append(pending);
+  }
+}
+
+async function copyText(value) {
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function flashCopied(el) {
+  el.classList.add("copied");
+  const prev = el.querySelector(".usage-copy-hint");
+  if (prev) prev.textContent = "已复制";
+  setTimeout(() => {
+    el.classList.remove("copied");
+    if (prev) prev.textContent = "点击复制";
+  }, 1200);
+}
+
+function fillSessionPane(pane, payload) {
+  pane.replaceChildren();
+  const sess = payload.session;
+  const text = payload.text || "";
+  if (sess?.error) {
+    pane.append(usageMuted(`Couldn't load session info: ${sess.error}`));
+    return;
+  }
+  if (sess?.noSession) {
+    pane.append(usageMuted("No active session."));
+    return;
+  }
+  const fields = pickVal(sess, "fields", "session_fields");
+  if (!Array.isArray(fields) || !fields.length) {
+    if (sess?.loading || !sess) {
+      pane.append(usageMuted("Loading session info…"));
+      if (!sess && text) pane.append(usagePre(text));
+      return;
+    }
+    pane.append(usagePre(text || "无会话信息"));
+    return;
+  }
+  const toolbar = document.createElement("div");
+  toolbar.className = "usage-toolbar";
+  const hint = document.createElement("span");
+  hint.className = "usage-muted";
+  hint.textContent = "click to copy";
+  const copyAll = document.createElement("button");
+  copyAll.type = "button";
+  copyAll.className = "btn small ghost";
+  copyAll.textContent = "复制全部";
+  copyAll.addEventListener("click", async () => {
+    const blob = fields.map((f) => `${f.label}: ${f.value}`).join("\n");
+    if (await copyText(blob)) flashCopied(copyAll);
+  });
+  toolbar.append(hint, copyAll);
+  pane.append(toolbar);
+  const list = document.createElement("div");
+  list.className = "usage-fields";
+  for (const f of fields) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = f.compact ? "usage-field compact" : "usage-field";
+    const lab = document.createElement("span");
+    lab.className = "k";
+    lab.textContent = f.label;
+    const val = document.createElement("span");
+    val.className = "v";
+    val.textContent = f.value;
+    const tip = document.createElement("span");
+    tip.className = "usage-copy-hint";
+    tip.textContent = "点击复制";
+    row.append(lab, val, tip);
+    const copied = f.compact ? `${f.label}: ${f.value}` : f.value;
+    row.addEventListener("click", async () => {
+      if (await copyText(copied)) flashCopied(row);
+    });
+    list.append(row);
+  }
+  pane.append(list);
+  const usageText = pickVal(sess, "sessionUsageText", "usageText", "usage_text", "session_usage_text");
+  if (usageText) {
+    const block = document.createElement("pre");
+    block.className = "usage-session-text";
+    block.textContent = String(usageText);
+    pane.append(block);
+  }
+}
+
+function syncUsageTabs() {
+  const card = $("app-modal-card");
+  const panel = card?.querySelector(".usage-panel");
+  if (!panel) return;
+  const tab = state.usageTab || "context";
+  for (const btn of panel.querySelectorAll("[data-tab]")) {
+    const on = btn.dataset.tab === tab;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  }
+  for (const pane of panel.querySelectorAll("[data-pane]")) {
+    pane.hidden = pane.dataset.pane !== tab;
+  }
+}
+
+function fillUsagePanes() {
+  const card = $("app-modal-card");
+  const panel = card?.querySelector(".usage-panel");
+  if (!panel) return;
+  const payload = state.usagePayload || { text: "" };
+  const ctxPane = panel.querySelector('[data-pane="context"]');
+  const limPane = panel.querySelector('[data-pane="limit"]');
+  const sessPane = panel.querySelector('[data-pane="session"]');
+  if (ctxPane) fillContextPane(ctxPane, payload);
+  if (limPane) fillLimitPane(limPane, payload);
+  if (sessPane) fillSessionPane(sessPane, payload);
+}
+
+function openUsageModal(payload) {
+  const data = typeof payload === "string" ? { text: payload } : payload || {};
+  const already = isUsageModalOpen();
+  if (already) {
+    state.usagePayload = mergeUsage(state.usagePayload, data);
+    fillUsagePanes();
+    syncUsageTabs();
+    return;
+  }
+  state.usageTab = "limit";
+  state.usagePayload = mergeUsage(null, data);
+  const box = document.createElement("div");
+  box.className = "usage-panel";
+  const tabs = document.createElement("div");
+  tabs.className = "usage-tabs";
+  tabs.setAttribute("role", "tablist");
+  const defs = [
+    ["context", "Context usage"],
+    ["limit", "Usage limit"],
+    ["session", "Session info"],
+  ];
+  for (const [id, label] of defs) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "usage-tab";
+    b.dataset.tab = id;
+    b.setAttribute("role", "tab");
+    b.textContent = label;
+    b.addEventListener("click", () => {
+      state.usageTab = id;
+      syncUsageTabs();
+    });
+    tabs.append(b);
+  }
+  box.append(tabs);
+  for (const [id] of defs) {
+    const pane = document.createElement("div");
+    pane.className = "usage-pane";
+    pane.dataset.pane = id;
+    pane.setAttribute("role", "tabpanel");
+    box.append(pane);
+  }
+  openAppModal("Usage", box);
+  const card = $("app-modal-card");
+  if (card) {
+    card.dataset.kind = "usage";
+    card.classList.add("usage-picker");
+  }
+  fillUsagePanes();
+  syncUsageTabs();
 }
 
 function notifyDone(body) {
@@ -704,7 +1220,7 @@ function onMessage(msg) {
       renderChrome();
       break;
     case "usage":
-      openUsageModal(msg.text || "无用量数据");
+      openUsageModal(msg);
       break;
     case "reveal":
       if (msg.instanceId) revealInstance(msg.instanceId);
@@ -985,7 +1501,7 @@ function sendPrompt() {
     prompt.value = "";
     hideSlash();
     sendJson({ type: "request_usage", sessionId: currentSessionId() });
-    openUsageModal("正在读取用量…");
+    openUsageModal({ text: "Loading usage…" });
     return;
   }
   const pop = $("slash-pop");
@@ -1125,6 +1641,15 @@ $("switch-machine").addEventListener("click", () => {
 
 $("app-modal")?.addEventListener("click", (e) => {
   if (e.target === $("app-modal")) closeAppModal();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const overlay = $("app-modal");
+  if (overlay && !overlay.hidden) {
+    e.preventDefault();
+    closeAppModal();
+  }
 });
 
 if ("serviceWorker" in navigator) {

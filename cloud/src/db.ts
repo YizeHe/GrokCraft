@@ -196,3 +196,54 @@ export async function consumePairing(db: D1Database, userCode: string): Promise<
 export function pairingExpiresAt(now = Date.now()): number {
   return now + PAIRING_TTL_MS;
 }
+
+export type LoginLockoutRow = {
+  email: string;
+  fail_streak: number;
+  day_key: string;
+  lock_until: number;
+  day_locked: number;
+};
+
+/** Calendar day in Asia/Shanghai as YYYY-MM-DD. */
+export function shanghaiDayKey(now = Date.now()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(now));
+  const y = parts.find((p) => p.type === "year")?.value ?? "1970";
+  const m = parts.find((p) => p.type === "month")?.value ?? "01";
+  const d = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${y}-${m}-${d}`;
+}
+
+export async function getLoginLockout(
+  db: D1Database,
+  email: string,
+): Promise<LoginLockoutRow | null> {
+  return db
+    .prepare("SELECT email, fail_streak, day_key, lock_until, day_locked FROM login_lockouts WHERE email = ?")
+    .bind(email)
+    .first<LoginLockoutRow>();
+}
+
+export async function upsertLoginLockout(db: D1Database, row: LoginLockoutRow): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO login_lockouts (email, fail_streak, day_key, lock_until, day_locked)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(email) DO UPDATE SET
+         fail_streak = excluded.fail_streak,
+         day_key = excluded.day_key,
+         lock_until = excluded.lock_until,
+         day_locked = excluded.day_locked`,
+    )
+    .bind(row.email, row.fail_streak, row.day_key, row.lock_until, row.day_locked)
+    .run();
+}
+
+export async function clearLoginLockout(db: D1Database, email: string): Promise<void> {
+  await db.prepare("DELETE FROM login_lockouts WHERE email = ?").bind(email).run();
+}

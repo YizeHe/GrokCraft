@@ -108,6 +108,59 @@ export type TaskInfo = {
   activityLabel?: string | null;
 };
 
+export type UsageSessionField = {
+  label: string;
+  value: string;
+  compact?: boolean;
+};
+
+export type UsageContextTab = {
+  loading?: boolean;
+  error?: string;
+  noSession?: boolean;
+  model?: string;
+  used?: number;
+  total?: number;
+  usagePct?: number;
+  systemPromptTokens?: number;
+  toolDefinitionsTokens?: number;
+  toolDefinitionsCount?: number;
+  messageTokens?: number;
+  freeTokens?: number;
+  turnCount?: number;
+  toolCallCount?: number;
+  compactionCount?: number;
+  lines?: string[];
+};
+
+export type UsageLimitTab = {
+  loading?: boolean;
+  error?: string;
+  chatKind?: boolean;
+  teamManaged?: boolean;
+  billingRedirectUrl?: string;
+  plan?: string;
+  usageLabel?: string;
+  usagePct?: number;
+  periodEndDisplay?: string;
+  prepaidCents?: number;
+  payAsYouGo?: boolean;
+  payAsYouGoUsedCents?: number;
+  payAsYouGoCapCents?: number;
+  summary?: string;
+  sessionUsageText?: string;
+  lines?: string[];
+};
+
+export type UsageSessionTab = {
+  loading?: boolean;
+  error?: string;
+  noSession?: boolean;
+  fields?: UsageSessionField[];
+  sessionUsageText?: string;
+  lines?: string[];
+};
+
 export type InstanceInfo = {
   instanceId: string;
   pid: number;
@@ -165,7 +218,13 @@ export type AgentToCloud =
   | { type: "permission_clear"; requestId: string }
   | { type: "pong"; ts: number }
   | { type: "error"; message: string }
-  | { type: "usage"; text: string }
+  | {
+      type: "usage";
+      text: string;
+      context?: UsageContextTab;
+      limit?: UsageLimitTab;
+      session?: UsageSessionTab;
+    }
   | { type: "reveal"; instanceId: string };
 
 export type CloudToAgent =

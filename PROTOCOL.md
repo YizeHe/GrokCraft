@@ -125,6 +125,12 @@ All frames are JSON text. Max ~900KB; truncate tool bodies, send full on
 { "type": "permission_clear", "requestId": "string" }
 { "type": "pong", "ts": 0 }
 { "type": "error", "message": "string" }
+{ "type": "usage",
+  "text": "string",                 // fallback / old pager
+  "context": { /* UsageContextTab */ },
+  "limit": { /* UsageLimitTab */ },
+  "session": { /* UsageSessionTab */ } }
+{ "type": "reveal", "instanceId": "uuid" }
 ```
 
 ### Relay → agent (`CloudToAgent`)
@@ -141,6 +147,8 @@ All frames are JSON text. Max ~900KB; truncate tool bodies, send full on
 { "type": "permission_response", "requestId": "string", "optionId": "string" }
 { "type": "request_block", "sessionId": "string", "blockId": "string" }
 { "type": "ping", "ts": 0 }
+{ "type": "request_usage" }
+{ "type": "load_session", "sessionId": "string", "cwd": "string|null" }
 ```
 
 On `paired`, persist `machineToken` + `machineId` in grokcraft.json.

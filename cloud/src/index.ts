@@ -9,7 +9,9 @@ import {
 } from "./auth";
 import { hashPassword, randomHex, sha256Hex, verifyPassword } from "./crypto";
 import {
+  clearLoginLockout,
   consumePairing,
+  getLoginLockout,
   getMachineById,
   getMachineByTokenHash,
   getPairingByCode,
@@ -17,6 +19,8 @@ import {
   insertUser,
   listMachinesByUser,
   pairingExpiresAt,
+  shanghaiDayKey,
+  upsertLoginLockout,
   upsertMachine,
   upsertPairing,
   type PairingRow,
@@ -25,6 +29,12 @@ import { isUserCode, normalizeUserCode } from "./protocol";
 import { clientIp, turnstileTokenFromBody, verifyTurnstile } from "./turnstile";
 
 export { MachineRelay };
+
+const LOGIN_COOLDOWN_MS = 10 * 60 * 1000;
+const LOGIN_FAILS_COOLDOWN = 3;
+const LOGIN_FAILS_DAY = 10;
+const LOGIN_DUMMY_HASH =
+  "pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
 function json(data: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -134,14 +144,67 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   if (captchaErr) return errorJson(400, captchaErr);
   if (!email || !password) return errorJson(400, "请输入邮箱和密码");
 
-  const user = await getUserByEmail(env.DB, email);
-  const dummy =
-    "pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-  const ok = await verifyPassword(password, user?.password_hash || dummy);
-  if (!user || !ok) return errorJson(401, "邮箱或密码不正确");
+  const now = Date.now();
+  const today = shanghaiDayKey(now);
+  const lock = await getLoginLockout(env.DB, email);
+  let failStreak = lock?.fail_streak ?? 0;
+  let dayKey = lock?.day_key ?? "";
+  let lockUntil = lock?.lock_until ?? 0;
+  let dayLocked = lock?.day_locked ?? 0;
 
-  const cookie = await issueSessionCookie(env, request, user.id);
-  return json({ id: user.id, email: user.email }, { headers: { "Set-Cookie": cookie } });
+  if (dayKey && dayKey !== today) {
+    failStreak = 0;
+    dayLocked = 0;
+    lockUntil = 0;
+    dayKey = today;
+  }
+
+  if (dayLocked) {
+    return errorJson(429, "今日连续输错次数过多，请明天再试", { lock: "day" });
+  }
+  if (now < lockUntil) {
+    const retryAfterSec = Math.max(1, Math.ceil((lockUntil - now) / 1000));
+    const mins = Math.max(1, Math.ceil(retryAfterSec / 60));
+    return json(
+      {
+        error: `连续输错 3 次，请 ${mins} 分钟后再试`,
+        lock: "cooldown",
+        retryAfterSec,
+      },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec) } },
+    );
+  }
+
+  const user = await getUserByEmail(env.DB, email);
+  const ok = await verifyPassword(password, user?.password_hash || LOGIN_DUMMY_HASH);
+  if (user && ok) {
+    await clearLoginLockout(env.DB, email);
+    const cookie = await issueSessionCookie(env, request, user.id);
+    return json({ id: user.id, email: user.email }, { headers: { "Set-Cookie": cookie } });
+  }
+
+  failStreak += 1;
+  let nextLockUntil = 0;
+  let nextDayLocked = 0;
+  if (failStreak >= LOGIN_FAILS_DAY) {
+    nextDayLocked = 1;
+  } else if (failStreak % LOGIN_FAILS_COOLDOWN === 0) {
+    nextLockUntil = now + LOGIN_COOLDOWN_MS;
+  }
+  await upsertLoginLockout(env.DB, {
+    email,
+    fail_streak: failStreak,
+    day_key: today,
+    lock_until: nextLockUntil,
+    day_locked: nextDayLocked,
+  });
+
+  const remainingTries = Math.max(0, LOGIN_FAILS_DAY - failStreak);
+  const remainingUntilCooldown =
+    failStreak % LOGIN_FAILS_COOLDOWN === 0
+      ? 0
+      : LOGIN_FAILS_COOLDOWN - (failStreak % LOGIN_FAILS_COOLDOWN);
+  return errorJson(401, "邮箱或密码不正确", { remainingTries, remainingUntilCooldown });
 }
 
 async function handleLogout(request: Request): Promise<Response> {
