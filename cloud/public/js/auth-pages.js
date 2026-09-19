@@ -107,6 +107,10 @@ form?.addEventListener("submit", async (e) => {
     resetTurnstile(form);
     if (mode === "login" && data.lock === "cooldown" && data.retryAfterSec) {
       startCooldown(data.retryAfterSec);
+    } else if (mode === "login" && data.lock === "day") {
+      setFormLocked(true);
+      const lockBtn = submitBtn();
+      if (lockBtn) lockBtn.disabled = true;
     }
   } finally {
     delete form.dataset.submitting;

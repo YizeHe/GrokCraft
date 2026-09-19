@@ -130,6 +130,8 @@ export type UsageContextTab = {
   turnCount?: number;
   toolCallCount?: number;
   compactionCount?: number;
+  autoCompactThresholdPercent?: number;
+  categories?: { label: string; tokens: number; detail?: string | null }[];
   lines?: string[];
 };
 
