@@ -73,14 +73,23 @@ function sessionTitle() {
   return "当前会话";
 }
 
+function visibleInstances() {
+  state.hiddenIds = loadHidden();
+  return (state.instances || []).filter((inst) => !state.hiddenIds.includes(inst.instanceId));
+}
+
+function canCompose() {
+  return !!state.online && !!state.instanceId;
+}
+
 function setOnline(on) {
   state.online = on;
   $("status-dot").className = "dot " + (on ? "live" : "off");
   $("status-text").textContent = on ? "在线" : "离线";
   const send = $("send");
   const prompt = $("prompt");
-  if (send) send.disabled = !on;
-  if (prompt) prompt.disabled = !on;
+  if (send) send.disabled = !canCompose();
+  if (prompt) prompt.disabled = !canCompose();
 }
 
 function sendJson(msg) {
@@ -1022,7 +1031,7 @@ function renderTranscript() {
     empty.className = "empty";
     empty.innerHTML = !state.online
       ? "<strong>电脑离线</strong><br />请保持本机 Grok TUI 运行。"
-      : !state.sessionId
+      : !state.instanceId
         ? "<strong>选择一个对话</strong><br />左侧项目列表里点开即可。"
         : "<strong>开始对话</strong><br />输入消息发给 Grok Build。";
     root.append(empty);
@@ -1141,8 +1150,8 @@ function renderChrome() {
   }
   $("back-btn").hidden = !state.viewChildId;
   $("cancel").hidden = !state.turnRunning;
-  $("send").disabled = !state.online || !state.sessionId;
-  $("prompt").disabled = !state.online || !state.sessionId;
+  $("send").disabled = !canCompose();
+  $("prompt").disabled = !canCompose();
   renderTree();
   renderSubagents();
   renderTasks();
@@ -1182,8 +1191,9 @@ function applyCatalog(msg) {
     state.blocks.clear();
     state.blockOrder = [];
   }
-  if (!state.instanceId && state.instances.length === 1) {
-    const inst = state.instances[0];
+  const visible = visibleInstances();
+  if (!state.instanceId && visible.length === 1) {
+    const inst = visible[0];
     selectSession(inst.instanceId, firstSessionId(inst));
     return;
   }
@@ -1510,7 +1520,7 @@ function sendPrompt() {
     return;
   }
   const pop = $("slash-pop");
-  const open = pop && !pop.hidden && state.slashItems.length;
+  const open = pop && !pop.hidden && state.slashItems.length && trimmed.startsWith("/");
   if (open) {
     const q = slashQuery(text);
     const kind = q && (q.cmd === "model" || q.cmd === "m") && q.args !== null ? "model" : "cmd";
@@ -1524,14 +1534,35 @@ function sendPrompt() {
       if (cmd?.takesArgs && !(next.args || "").trim()) return;
     }
   }
-  if (!text.trim() || !state.online || !state.sessionId) return;
+  const body = text.trim();
+  if (!body) return;
+  if (!state.instanceId) {
+    const only = visibleInstances();
+    if (only.length === 1) selectSession(only[0].instanceId, firstSessionId(only[0]));
+  }
+  if (!canCompose()) return;
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+  const promptId = crypto.randomUUID();
   sendJson({
     type: "prompt",
     instanceId: state.instanceId,
-    sessionId: currentSessionId(),
-    text: text.trim(),
-    promptId: crypto.randomUUID(),
+    sessionId: state.sessionId || null,
+    text: body,
+    promptId,
   });
+  upsertBlock(
+    {
+      id: `local-${promptId}`,
+      sessionId: state.sessionId || "",
+      kind: "user",
+      title: "User",
+      content: body,
+      displayMode: "expanded",
+      status: "done",
+      foldable: false,
+    },
+    false,
+  );
   prompt.value = "";
   hideSlash();
   autoGrow(prompt);
