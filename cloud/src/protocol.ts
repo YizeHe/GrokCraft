@@ -242,7 +242,8 @@ export type CloudToAgent =
   | { type: "request_block"; sessionId: string; blockId: string }
   | { type: "ping"; ts: number }
   | { type: "request_usage" }
-  | { type: "load_session"; sessionId: string; cwd?: string | null };
+  | { type: "load_session"; sessionId: string; cwd?: string | null }
+  | { type: "create_project"; parent: string; name: string };
 
 export type RelayToBrowser =
   | AgentToCloud

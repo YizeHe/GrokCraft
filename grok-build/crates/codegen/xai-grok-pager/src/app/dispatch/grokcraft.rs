@@ -89,6 +89,7 @@ pub(crate) fn handle_event(app: &mut AppView, ev: GrokcraftEvent) -> Vec<Effect>
             crate::grokcraft_mirror::emit_usage_if_connected(app);
             effects
         }
+        GrokcraftEvent::CreateProject { parent, name } => create_project(app, &parent, &name),
         GrokcraftEvent::LoadSession { session_id, cwd } => dispatch(
             Action::LoadSession(
                 session_id,
@@ -151,6 +152,54 @@ pub(crate) fn handle_event(app: &mut AppView, ev: GrokcraftEvent) -> Vec<Effect>
 
 /// Web prompts must land on an agent view. The dashboard and welcome screen
 /// otherwise stash the text and never send it.
+fn create_project(app: &mut AppView, parent: &str, name: &str) -> Vec<Effect> {
+    let fail = |app: &mut AppView, message: String| {
+        app.show_toast(&message);
+        xai_grokcraft::hub::global().emit(xai_grokcraft::AgentToCloud::Error { message });
+        vec![]
+    };
+    let name = name.trim();
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|'])
+    {
+        return fail(app, "文件夹名无效".into());
+    }
+    let parent_path = std::path::PathBuf::from(parent.trim());
+    if !parent_path.is_absolute() || !parent_path.is_dir() {
+        return fail(app, "请选择这台电脑上已存在的目录".into());
+    }
+    let dir = parent_path.join(name);
+    if dir.exists() {
+        return fail(app, "这个文件夹已经存在".into());
+    }
+    if let Err(err) = std::fs::create_dir(&dir) {
+        return fail(app, format!("无法创建文件夹: {err}"));
+    }
+    let previous = match app.active_view {
+        ActiveView::Agent(id) => app.agents.get(&id).map(|agent| (id, agent.session.cwd.clone())),
+        _ => None,
+    };
+    if let Some((id, _)) = previous {
+        if let Some(agent) = app.agents.get_mut(&id) {
+            agent.session.cwd = dir.clone();
+        }
+    } else {
+        app.cwd = dir.clone();
+    }
+    let effects = super::session::lifecycle::dispatch_new_session_inner(app, None);
+    if let Some((id, cwd)) = previous
+        && let Some(agent) = app.agents.get_mut(&id)
+    {
+        agent.session.cwd = cwd;
+    }
+    crate::grokcraft_mirror::reset_catalog_cache();
+    crate::grokcraft_mirror::push_catalog_if_connected(app);
+    app.show_toast(&format!("已创建项目 {}", dir.display()));
+    effects
+}
+
 fn ensure_agent_for_prompt(app: &mut AppView, session_id: Option<&str>) -> Vec<Effect> {
     if let Some(sid) = session_id.filter(|s| !s.is_empty()) {
         focus_session(app, sid);

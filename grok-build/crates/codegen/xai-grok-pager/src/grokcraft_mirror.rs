@@ -34,7 +34,8 @@ pub fn push_catalog_if_connected(app: &AppView) {
     }
     let (mut sessions, mut active_session_id, _blocks, _subagents, _tasks, _permission) = snapshot(app);
     let (cwd, _model, _session_id, turn_running) = status_fields(app);
-    if sessions.is_empty() {
+    append_saved_sessions(&cwd, &mut sessions);
+    if sessions.iter().all(|s| s.is_child) {
         sessions.push(SessionSummary {
             id: "live".into(),
             title: "当前对话".into(),
@@ -69,6 +70,95 @@ pub fn push_catalog_if_connected(app: &AppView) {
         sessions,
     });
     emit_commands_and_models(app);
+}
+
+fn encode_cwd_dirname(cwd: &str) -> String {
+    let mut out = String::new();
+    for b in cwd.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' => out.push(*b as char),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+fn append_saved_sessions(cwd: &str, sessions: &mut Vec<SessionSummary>) {
+    if cwd.is_empty() {
+        return;
+    }
+    let root = xai_grok_shell::util::grok_home::grok_home()
+        .join("sessions")
+        .join(encode_cwd_dirname(cwd));
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return;
+    };
+    let have: std::collections::HashSet<String> = sessions.iter().map(|s| s.id.clone()).collect();
+    let mut rows: Vec<(String, SessionSummary)> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path().join("summary.json");
+        let Ok(bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            continue;
+        };
+        if value.get("hidden").and_then(|v| v.as_bool()) == Some(true) {
+            continue;
+        }
+        let id = value
+            .pointer("/info/id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if id.is_empty() || have.contains(&id) {
+            continue;
+        }
+        let kind = value.get("session_kind").and_then(|v| v.as_str()).unwrap_or("");
+        let summary = value
+            .get("session_summary")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let chats = value
+            .get("num_chat_messages")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        if kind != "subagent" && chats == 0 && summary.is_empty() {
+            continue;
+        }
+        let title: String = if summary.is_empty() {
+            "未命名对话".into()
+        } else {
+            summary.chars().take(80).collect()
+        };
+        let parent = value
+            .get("parent_session_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let is_child = kind == "subagent";
+        let updated = value
+            .get("updated_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        rows.push((
+            updated,
+            SessionSummary {
+                id,
+                title,
+                cwd: cwd.to_string(),
+                is_child,
+                parent_id: if is_child { parent } else { None },
+            },
+        ));
+    }
+    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    rows.truncate(80);
+    for (_, session) in rows {
+        sessions.push(session);
+    }
 }
 
 fn emit_commands_and_models(app: &AppView) {

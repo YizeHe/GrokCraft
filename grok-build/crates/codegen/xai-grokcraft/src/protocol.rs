@@ -434,6 +434,10 @@ pub enum CloudToAgent {
         session_id: String,
         cwd: Option<String>,
     },
+    CreateProject {
+        parent: String,
+        name: String,
+    },
 }
 
 /// Inbound events surfaced to the pager.
@@ -476,6 +480,10 @@ pub enum GrokcraftEvent {
     LoadSession {
         session_id: String,
         cwd: Option<String>,
+    },
+    CreateProject {
+        parent: String,
+        name: String,
     },
     Error(String),
 }
@@ -582,6 +590,9 @@ pub fn event_from_cloud(msg: CloudToAgent) -> Option<GrokcraftEvent> {
         CloudToAgent::RequestUsage => Some(GrokcraftEvent::RequestUsage),
         CloudToAgent::LoadSession { session_id, cwd } => {
             Some(GrokcraftEvent::LoadSession { session_id, cwd })
+        }
+        CloudToAgent::CreateProject { parent, name } => {
+            Some(GrokcraftEvent::CreateProject { parent, name })
         }
     }
 }

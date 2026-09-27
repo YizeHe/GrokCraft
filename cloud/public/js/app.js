@@ -17,6 +17,9 @@ const state = {
   sessions: [],
   instances: [],
   expanded: {},
+  expandedSubs: {},
+  expandedBlocks: {},
+  usageWanted: false,
   blocks: new Map(),
   blockOrder: [],
   subagents: new Map(),
@@ -174,6 +177,7 @@ function openAppModal(title, bodyNode) {
 }
 
 function closeAppModal() {
+  state.usageWanted = false;
   const overlay = $("app-modal");
   if (overlay) overlay.hidden = true;
   const card = $("app-modal-card");
@@ -839,37 +843,99 @@ function renderTree() {
     });
     box.append(head);
     if (open) {
-      const sessions = (inst.sessions || []).filter((s) => !s.isChild);
-      if (!sessions.length) {
-        const row = document.createElement("div");
-        row.className = "sess-row";
-        row.innerHTML = `<span class="title">当前窗口</span>`;
-        if (state.instanceId === inst.instanceId) row.classList.add("active");
-        row.addEventListener("click", () => selectSession(inst.instanceId, inst.activeSessionId || ""));
-        box.append(row);
-      }
-      for (const s of sessions) {
-        const row = document.createElement("div");
-        row.className = "sess-row";
-        if (state.instanceId === inst.instanceId && state.sessionId === s.id) row.classList.add("active");
-        row.innerHTML = `<span class="title"></span><button class="more-btn" type="button" aria-label="隐藏">⋯</button>`;
-        row.querySelector(".title").textContent = sessionLabel(s);
-        if (inst.turnRunning && inst.activeSessionId === s.id) {
-          const busy = document.createElement("span");
-          busy.className = "busy";
-          row.querySelector(".title").after(busy);
-        }
-        row.querySelector(".more-btn").addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          showCtxMenu(e, [{ label: "隐藏", run: () => hideInstance(inst.instanceId) }]);
+      const sessions = inst.sessions || [];
+      const parents = sessions.filter((s) => !s.isChild);
+      const draw = parents.length ? parents : [{ id: "", title: "当前窗口", cwd: inst.cwd }];
+      for (const s of draw) {
+        box.append(sessionRow(inst, s));
+        const kids = sessions.filter((c) => c.isChild && c.parentId === s.id);
+        const liveKids =
+          s.id && s.id === inst.activeSessionId
+            ? [...state.subagents.values()].filter((sub) => !kids.some((c) => c.id === sub.childSessionId))
+            : [];
+        if (!kids.length && !liveKids.length) continue;
+        const shown = !!state.expandedSubs[s.id || inst.instanceId];
+        const toggle = document.createElement("div");
+        toggle.className = "sess-row sub-toggle";
+        toggle.textContent = `${shown ? "▾" : "▸"} 子代理 ${kids.length + liveKids.length}`;
+        toggle.addEventListener("click", () => {
+          const key = s.id || inst.instanceId;
+          state.expandedSubs[key] = !state.expandedSubs[key];
+          renderTree();
         });
-        row.addEventListener("click", () => selectSession(inst.instanceId, s.id));
-        box.append(row);
+        box.append(toggle);
+        if (!shown) continue;
+        for (const child of kids) box.append(sessionRow(inst, child, true));
+        for (const sub of liveKids) {
+          box.append(
+            sessionRow(
+              inst,
+              {
+                id: sub.childSessionId,
+                title: sub.description || sub.subagentType || "子代理",
+                isChild: true,
+              },
+              true,
+            ),
+          );
+        }
       }
     }
     root.append(box);
   }
+}
+
+function showNotice(text) {
+  const root = $("transcript");
+  if (!root || !text) return;
+  const n = document.createElement("div");
+  n.className = "notice warn";
+  n.textContent = text;
+  root.prepend(n);
+}
+
+function sessionRow(inst, session, nested) {
+  const row = document.createElement("div");
+  row.className = "sess-row" + (nested ? " nested" : "");
+  const sid = session.id && session.id !== "live" ? session.id : "";
+  if (state.instanceId === inst.instanceId && state.sessionId === sid) row.classList.add("active");
+  row.innerHTML = `<span class="title"></span>`;
+  row.querySelector(".title").textContent = session.title || sessionLabel(session);
+  if (inst.turnRunning && inst.activeSessionId && inst.activeSessionId === session.id) {
+    const busy = document.createElement("span");
+    busy.className = "busy";
+    row.querySelector(".title").after(busy);
+  }
+  row.addEventListener("click", () => {
+    selectSession(inst.instanceId, sid);
+    if (sid && sid !== inst.activeSessionId) {
+      sendJson({ type: "load_session", sessionId: sid, cwd: session.cwd || inst.cwd || "" });
+    }
+  });
+  return row;
+}
+
+function openNewProject() {
+  if (!state.online || !state.instanceId) {
+    showNotice("本机 Grokcraft 还没连上，先在电脑上运行 gcagent。");
+    return;
+  }
+  const inst = state.instances.find((i) => i.instanceId === state.instanceId);
+  const parent = inst?.cwd || state.cwd || "";
+  const box = document.createElement("form");
+  box.className = "new-project";
+  box.innerHTML = `<label>电脑上的目录<input name="parent" autocomplete="off" /></label><label>新文件夹<input name="name" autocomplete="off" placeholder="例如 my-app" /></label><p class="hint">会在这台正在运行的电脑上创建文件夹，并在里面开始对话。</p><button class="btn" type="submit">创建并打开</button>`;
+  box.elements.parent.value = parent;
+  box.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const parentPath = box.elements.parent.value.trim();
+    const name = box.elements.name.value.trim();
+    if (!parentPath || !name) return;
+    sendJson({ type: "create_project", parent: parentPath, name });
+    closeAppModal();
+  });
+  openAppModal("新建项目", box);
+  box.elements.name.focus();
 }
 
 function nextDisplayMode(block) {
@@ -906,15 +972,16 @@ function renderBlock(block) {
   el.id = `block-${block.id}`;
   if (block.status === "error") el.classList.add("error");
   if (block.isRunning || block.status === "running") el.classList.add("running");
-  const openChild = block.openChildSession || block.kind === "subagent";
-  if (block.foldable && !openChild) el.classList.add("foldable");
+  const subOpen = block.kind === "subagent" && !!state.expandedBlocks[block.id];
+  const openChild = !!block.openChildSession && block.kind !== "subagent";
+  if ((block.foldable || block.kind === "subagent") && !openChild) el.classList.add("foldable");
 
   const body = document.createElement("div");
   body.className = "block-body";
   const text = blockText(block);
-  const collapsed = block.displayMode === "collapsed";
+  const collapsed = block.kind === "subagent" ? !subOpen : block.displayMode === "collapsed";
   const truncated = block.displayMode === "truncated";
-  const showChrome = block.foldable || openChild || block.kind === "thinking" || block.kind === "tool" || block.kind === "bg_task";
+  const showChrome = block.foldable || openChild || block.kind === "subagent" || block.kind === "thinking" || block.kind === "tool" || block.kind === "bg_task";
 
   if (isNoticeKind(block.kind)) {
     const notice = document.createElement("div");
@@ -960,6 +1027,11 @@ function renderBlock(block) {
     line.append(chev, name, title, meta);
     body.append(line);
     line.addEventListener("click", () => {
+      if (block.kind === "subagent") {
+        state.expandedBlocks[block.id] = !state.expandedBlocks[block.id];
+        upsertBlock(block, true);
+        return;
+      }
       if (openChild && block.childSessionId) {
         openChildSession(block.childSessionId);
         return;
@@ -1069,8 +1141,8 @@ function renderSubagents() {
   const root = $("subagent-list");
   const section = $("subagent-section");
   root.innerHTML = "";
-  const list = [...state.subagents.values()];
-  if (section) section.hidden = !list.length;
+  if (section) section.hidden = true;
+  const list = [];
   if (!list.length) {
     return;
   }
@@ -1239,7 +1311,10 @@ function onMessage(msg) {
       renderChrome();
       break;
     case "usage":
-      openUsageModal(msg);
+      if (state.usageWanted || isUsageModalOpen()) openUsageModal(msg);
+      break;
+    case "error":
+      if (msg.message) showNotice(msg.message);
       break;
     case "reveal":
       if (msg.instanceId) revealInstance(msg.instanceId);
@@ -1522,6 +1597,7 @@ function sendPrompt() {
   if (q0 && (q0.cmd === "usage" || q0.cmd === "cost")) {
     prompt.value = "";
     hideSlash();
+    state.usageWanted = true;
     sendJson({ type: "request_usage", sessionId: currentSessionId() });
     openUsageModal({ text: "Loading usage…" });
     return;
@@ -1683,6 +1759,7 @@ $("logout").addEventListener("click", async () => {
   location.href = "/login";
 });
 
+$("new-project")?.addEventListener("click", () => openNewProject());
 $("switch-machine").addEventListener("click", () => {
   showPicker(state.machines, "选择一台已授权的电脑。");
 });
