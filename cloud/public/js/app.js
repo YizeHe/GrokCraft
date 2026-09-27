@@ -793,9 +793,12 @@ function renderTree() {
   if (!list.length) {
     const empty = document.createElement("div");
     empty.className = "tree-empty";
-    empty.textContent = state.online
-      ? "还没有对话。在本机 Grok TUI 开一个会话即可出现在这里。"
-      : "电脑离线。保持 Grok TUI 运行，配对过一次后会自动连上。";
+    const concealed = (state.instances || []).filter((inst) => state.hiddenIds.includes(inst.instanceId)).length;
+    empty.textContent = !state.online
+      ? "电脑离线。保持 Grok TUI 运行，再输入 /grokcraft。"
+      : concealed
+        ? "窗口被隐藏了。在本机再输入一次 /grokcraft 就会出现在这里。"
+        : "正在等待本机窗口。保持这个 Grok TUI 开着。";
     root.append(empty);
     return;
   }
@@ -1183,6 +1186,10 @@ function firstSessionId(inst) {
 
 function applyCatalog(msg) {
   state.instances = msg.instances || [];
+  if (qs("reveal") === "1") {
+    const hidden = loadHidden().filter((id) => !state.instances.some((inst) => inst.instanceId === id));
+    saveHidden(hidden);
+  }
   const any = !!msg.machineOnline && state.instances.length > 0;
   setOnline(any);
   if (state.instanceId && !state.instances.some((i) => i.instanceId === state.instanceId)) {
@@ -1197,10 +1204,10 @@ function applyCatalog(msg) {
     selectSession(inst.instanceId, firstSessionId(inst));
     return;
   }
-  if (state.instanceId && !state.sessionId) {
+  if (state.instanceId && (!state.sessionId || state.sessionId === "live")) {
     const inst = state.instances.find((i) => i.instanceId === state.instanceId);
     const sid = firstSessionId(inst);
-    if (sid) {
+    if (sid && sid !== state.sessionId) {
       selectSession(state.instanceId, sid);
       return;
     }
@@ -1546,7 +1553,7 @@ function sendPrompt() {
   sendJson({
     type: "prompt",
     instanceId: state.instanceId,
-    sessionId: state.sessionId || null,
+    sessionId: state.sessionId && state.sessionId !== "live" ? state.sessionId : null,
     text: body,
     promptId,
   });
@@ -1698,6 +1705,10 @@ if ("serviceWorker" in navigator) {
 }
 
 async function boot() {
+  if (qs("reveal") === "1" && state.machineId) {
+    localStorage.removeItem(`gc_hidden_${state.machineId}`);
+    state.hiddenIds = [];
+  }
   try {
     state.me = await api("/api/me");
     $("me-email").textContent = state.me.email;

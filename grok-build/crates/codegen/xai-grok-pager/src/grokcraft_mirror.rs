@@ -21,13 +21,31 @@ use xai_grokcraft::{
 const CONTENT_CAP: usize = 8_000;
 static LAST_CATALOG: Mutex<String> = Mutex::new(String::new());
 
+pub fn reset_catalog_cache() {
+    if let Ok(mut last) = LAST_CATALOG.lock() {
+        last.clear();
+    }
+}
+
 pub fn push_catalog_if_connected(app: &AppView) {
     let hub = xai_grokcraft::hub::global();
     if !hub.is_connected() {
         return;
     }
-    let (sessions, active_session_id, _blocks, _subagents, _tasks, _permission) = snapshot(app);
+    let (mut sessions, mut active_session_id, _blocks, _subagents, _tasks, _permission) = snapshot(app);
     let (cwd, _model, _session_id, turn_running) = status_fields(app);
+    if sessions.is_empty() {
+        sessions.push(SessionSummary {
+            id: "live".into(),
+            title: "当前对话".into(),
+            cwd: cwd.clone(),
+            is_child: false,
+            parent_id: None,
+        });
+        if active_session_id.is_none() {
+            active_session_id = Some("live".into());
+        }
+    }
     let key = format!(
         "{cwd}|{turn_running}|{}|{}",
         active_session_id.as_deref().unwrap_or(""),

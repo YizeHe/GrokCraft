@@ -15,23 +15,38 @@ use crate::scrollback::types::DisplayMode;
 
 pub(super) fn dispatch_connect(app: &mut AppView) -> Vec<Effect> {
     app.show_toast("正在连接 Grokcraft…");
+    let mut effects = Vec::new();
+    // A dashboard or welcome screen has no conversation for the sidebar to list.
+    if matches!(app.active_view, ActiveView::AgentDashboard) {
+        effects.extend(dispatch(Action::ExitDashboard, app));
+    }
+    if matches!(app.active_view, ActiveView::Welcome) {
+        effects.extend(super::session::lifecycle::leave_welcome_for_session(app));
+    }
     let hub = xai_grokcraft::hub::global();
     if hub.is_connected() {
         hub.emit(xai_grokcraft::AgentToCloud::Reveal {
             instance_id: hub.instance_id().to_string(),
         });
         crate::grokcraft_mirror::push_catalog_if_connected(app);
+        crate::grokcraft_mirror::push_snapshot_if_connected(app);
     }
     if let Ok(store) = xai_grokcraft::store::load()
         && store.machine_token.as_ref().is_some_and(|t| !t.is_empty())
     {
         let origin = store.origin.trim_end_matches('/');
-        open_url_or_show(app, &format!("{origin}/app"));
-        return vec![Effect::GrokcraftConnect {
+        let url = format!(
+            "{origin}/app?machineId={}&reveal=1",
+            store.machine_id
+        );
+        open_url_or_show(app, &url);
+        effects.push(Effect::GrokcraftConnect {
             open_browser: false,
-        }];
+        });
+        return effects;
     }
-    vec![Effect::GrokcraftConnect { open_browser: true }]
+    effects.push(Effect::GrokcraftConnect { open_browser: true });
+    effects
 }
 
 pub(crate) fn handle_event(app: &mut AppView, ev: GrokcraftEvent) -> Vec<Effect> {
@@ -42,6 +57,7 @@ pub(crate) fn handle_event(app: &mut AppView, ev: GrokcraftEvent) -> Vec<Effect>
             vec![]
         }
         GrokcraftEvent::Paired => {
+            crate::grokcraft_mirror::reset_catalog_cache();
             app.show_toast("Grokcraft 已授权");
             let hub = xai_grokcraft::hub::global();
             hub.emit(xai_grokcraft::AgentToCloud::Reveal {
@@ -52,6 +68,7 @@ pub(crate) fn handle_event(app: &mut AppView, ev: GrokcraftEvent) -> Vec<Effect>
             vec![]
         }
         GrokcraftEvent::Status(s) => {
+            crate::grokcraft_mirror::reset_catalog_cache();
             app.show_toast(&s);
             crate::grokcraft_mirror::push_catalog_if_connected(app);
             vec![]

@@ -48,9 +48,29 @@ async fn run_once() -> anyhow::Result<()> {
     );
 
     tracing::info!(%url, pairing, "grokcraft connecting");
-    let (ws, _) = tokio_tungstenite::connect_async(&url).await?;
-    let (mut sink, mut stream) = ws.split();
     let hub = global();
+    // Subscribe before announcing "connected", or the first catalog frame is
+    // dropped (broadcast has no receiver) and the web sidebar stays empty.
+    let mut outbound_rx = hub.outbound.subscribe();
+    let (ws, _) = match tokio_tungstenite::connect_async(&url).await {
+        Ok(pair) => pair,
+        Err(err) => {
+            let msg = err.to_string();
+            if store.machine_token.is_some()
+                && (msg.contains("401") || msg.contains("403") || msg.contains("invalid machine token"))
+            {
+                store.machine_token = None;
+                if let Err(save_err) = store::save(&store) {
+                    tracing::warn!(%save_err, "failed to clear stale grokcraft token");
+                }
+                hub.push_inbound(GrokcraftEvent::Error(
+                    "Grokcraft 配对已失效，正在重新打开授权页".into(),
+                ));
+            }
+            return Err(err.into());
+        }
+    };
+    let (mut sink, mut stream) = ws.split();
     hub.set_connected(true);
 
     let hello = AgentToCloud::Hello {
@@ -77,7 +97,6 @@ async fn run_once() -> anyhow::Result<()> {
         hub.push_inbound(GrokcraftEvent::Status("Grokcraft 已连接".into()));
     }
 
-    let mut outbound_rx = hub.outbound.subscribe();
     // Edge auto-responds "pong" without waking the Durable Object. ~50s keeps
     // home NAT mappings alive without burning Workers CPU/D1.
     let mut keepalive = tokio::time::interval(Duration::from_secs(50));
